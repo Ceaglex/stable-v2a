@@ -1,9 +1,8 @@
 *.mp4
 *.wav
 *.pickle
-*.safetensor
+*.safetensors
 *.pt
 *.out
 
 /build
-/dataset
