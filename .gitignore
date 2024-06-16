@@ -1,0 +1,9 @@
+*.mp4
+*.wav
+*.pickle
+*.safetensor
+*.pt
+*.out
+
+/build
+/dataset
