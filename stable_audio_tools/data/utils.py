@@ -41,7 +41,7 @@ class PadCrop_Normalized_T(nn.Module):
         if(self.randomize and n_samples > self.n_samples):
             offset = random.randint(0, upper_bound)
 
-        # Calculate the start and end times of the chunk
+        # Calculate the start and end proportion of the chunk
         t_start = offset / (upper_bound + self.n_samples)
         t_end = (offset + self.n_samples) / (upper_bound + self.n_samples)
 
@@ -59,7 +59,10 @@ class PadCrop_Normalized_T(nn.Module):
         padding_mask = torch.zeros([self.n_samples])
         padding_mask[:min(n_samples, self.n_samples)] = 1
         
-        
+        # chunk: start at 0, [n_channels, self.n_samples] shape. May padding 0 in the end
+        # t_start/t_end: start/end proportion
+        # seconds_start/seconds_total: start/total audio length
+        # padding_mask: chunck[padding_mask]
         return (
             chunk,
             t_start,

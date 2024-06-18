@@ -30,11 +30,11 @@ class AudioDataset(Dataset):
     def __getitem__(self, idx):
         mp4_file = self.mp4_files[idx]
         try:
-            video = VideoFileClip(mp4_file)
-            video = video.set_fps(self.fps)
             pickle_file = os.path.join(pickle_dir, os.path.basename(mp4_file)[:-4] + ".pickle")
-            
+
             if self.recalculate or not os.path.exists(pickle_file):
+                video = VideoFileClip(mp4_file)
+                video = video.set_fps(self.fps)
                 frames = []
                 with torch.no_grad():
                     for idx, frame in enumerate(video.iter_frames()):
@@ -44,10 +44,10 @@ class AudioDataset(Dataset):
                 feature_dict = {'video_path': mp4_file, 'pickle_path':pickle_file, 'fps' : video.fps, 'duration' : video.duration, 'frame_num':len(frames)}
                 frames = torch.cat(frames)   ######
                 return feature_dict, frames
+            
             else:
                 print(f"{pickle_file} already exists!")   
                 return {}, torch.tensor(0)
-
 
         except Exception as e:
             print(f"{mp4_file} encountered with error : ", e)
@@ -87,11 +87,7 @@ def main(mp4_dir,
                 continue
 
             for key, value in feature_dict.items():
-                if isinstance(value[0], torch.Tensor):
-                    feature_dict[key] = float(value[0])
-                else:
-                    feature_dict[key] = value[0]
-
+                feature_dict[key] = float(value[0]) if isinstance(value[0], torch.Tensor) else value[0]
 
             frames = frames.squeeze(0).to(device)
             image_features = []

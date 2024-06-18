@@ -1,0 +1,21 @@
+FILE:../../dataset/video/train/AudioSet/obVRHsMY6Yo_p.mp4
+ REASON:'video_fps'
+
+FILE:../../dataset/video/test/AudioSet/p85b0fQ7r48_p.mp4
+ REASON:'video_fps'
+
+FILE:../../dataset/video/test/AudioSet/qWIzaRz4nxM_p.mp4
+ REASON:'video_fps'
+
+FILE:../../dataset/video/test/AudioSet/-lci0RRFlkA_p.mp4
+ REASON:'video_fps'
+
+FILE:../../dataset/video/test/AudioSet/aqX6ZlODIPc_p.mp4
+ REASON:'video_fps'
+
+FILE:../../dataset/video/test/AudioSet/IMTv4Ym0p6A_p.mp4
+ REASON:'video_fps'
+
+FILE:../../dataset/video/train/AudioSet/obVRHsMY6Yo_p.mp4
+ REASON:'video_fps'
+
