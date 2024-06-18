@@ -43,15 +43,7 @@
         "conditioning": {
             "configs": [
                 {
-                    "id": "prompt",
-                    "type": "t5",
-                    "config": {
-                        "t5_model_name": "t5-base",
-                        "max_length": 128
-                    }
-                },
-                {
-                    "id": "seconds_start",
+                    "id": "duration",
                     "type": "number",
                     "config": {
                         "min_val": 0,
@@ -59,15 +51,15 @@
                     }
                 },
                 {
-                    "id": "seconds_total",
-                    "type": "number",
-                    "config": {
-                        "min_val": 0,
-                        "max_val": 512
+                    "id": "feature",
+                    "type": "video_feature",
+                    "config": {                    
+
                     }
                 }
             ],
-            "cond_dim": 768
+            "cond_dim": 768,
+            "default_keys":{ "feature" :"video_path"}
         },
         "diffusion": {
             "cross_attention_cond_ids": ["prompt", "seconds_start", "seconds_total"],

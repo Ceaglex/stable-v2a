@@ -1496,6 +1496,7 @@ class NumberEmbedder(nn.Module):
         shape = x.shape
         x = rearrange(x, "... -> (...)")
         embedding = self.embedding(x)
+
         x = embedding.view(*shape, self.features)
         return x  # type: ignore
 

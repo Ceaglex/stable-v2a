@@ -44,6 +44,7 @@ def collation_fn(samples):
                 combined_dict = {}
                 stack_keys = ['fps','duration', 'frame_num']
                 pad_keys = ['feature']
+                list_keys = ['video_path']
 
                 for key in stack_keys:
                     combined_dict[key] = torch.tensor([[metadata[key]] for metadata in b])
@@ -53,6 +54,8 @@ def collation_fn(samples):
                         F.pad(metadata[key], (0, 0, 0, max_length - metadata[key].shape[0]), mode='constant', value=0) 
                         for metadata in b
                     ])
+                for key in list_keys:
+                    combined_dict[key] = [metadata[key] for metadata in b]
                 result.append(combined_dict)
 
         return result
@@ -64,9 +67,9 @@ class VideoFeatDataset(torch.utils.data.Dataset):
         info_dirs,
         audio_dirs,
         exts='wav',
-        sample_size=2097152, 
         sample_rate=44100, 
-        random_crop=True,
+        # sample_size=2097152, 
+        # random_crop=True,
         force_channels="stereo"
     ):
         super().__init__()
@@ -75,7 +78,7 @@ class VideoFeatDataset(torch.utils.data.Dataset):
         # dict("video_path", "fps", "duration", "frame_num", "feature", "audio_path")
 
 
-        self.pad_crop = PadCrop_Normalized_T(sample_size, sample_rate, randomize=random_crop)
+        # self.pad_crop = PadCrop_Normalized_T(sample_size, sample_rate, randomize=random_crop)
         self.force_channels = force_channels
         self.encoding = torch.nn.Sequential(
             Stereo() if self.force_channels == "stereo" else torch.nn.Identity(),
@@ -127,7 +130,7 @@ class VideoFeatDataset(torch.utils.data.Dataset):
             audio_dir = audio_dirs[i]
             ext = f".{exts[i]}"
 
-            for pickle_path in glob.glob(os.path.join(info_dir, "*.pickle")):
+            for pickle_path in glob.glob(os.path.join(info_dir, "*.pickle"))[:10]:
                 audio_name = os.path.basename(pickle_path).replace('.pickle', ext)
                 audio_path = os.path.join(audio_dir, audio_name)
                 if not os.path.exists(audio_path):
