@@ -2,6 +2,7 @@ import torch
 from einops import rearrange
 from torch import nn
 
+
 class Pretransform(nn.Module):
     def __init__(self, enable_grad, io_channels, is_discrete):
         super().__init__()
@@ -24,6 +25,7 @@ class Pretransform(nn.Module):
     
     def decode_tokens(self, tokens):
         raise NotImplementedError
+
 
 class AutoencoderPretransform(Pretransform):
     def __init__(self, model, scale=1.0, model_half=False, iterate_batch=False, chunked=False):

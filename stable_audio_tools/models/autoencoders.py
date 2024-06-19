@@ -1,19 +1,16 @@
 import torch
 import math
-import numpy as np
 
 from torch import nn
-from torch.nn import functional as F
 from torchaudio import transforms as T
 from alias_free_torch import Activation1d
 from dac.nn.layers import WNConv1d, WNConvTranspose1d
 from typing import Literal, Dict, Any
 
-from ..inference.sampling import sample
+
 from ..inference.utils import prepare_audio
 from .blocks import SnakeBeta
-from .bottleneck import Bottleneck, DiscreteBottleneck
-from .diffusion import ConditionedDiffusionModel, DAU1DCondWrapper, UNet1DCondWrapper, DiTWrapper
+from .bottleneck import Bottleneck
 from .factory import create_pretransform_from_config, create_bottleneck_from_config
 from .pretransforms import Pretransform
 
@@ -146,7 +143,6 @@ class OobleckEncoder(nn.Module):
     def forward(self, x):
         return self.layers(x)
 
-
 class OobleckDecoder(nn.Module):
     def __init__(self, 
                  out_channels=2, 
@@ -189,43 +185,6 @@ class OobleckDecoder(nn.Module):
 
     def forward(self, x):
         return self.layers(x)
-
-
-class DACEncoderWrapper(nn.Module):
-    def __init__(self, in_channels=1, **kwargs):
-        super().__init__()
-
-        from dac.model.dac import Encoder as DACEncoder
-
-        latent_dim = kwargs.pop("latent_dim", None)
-
-        encoder_out_dim = kwargs["d_model"] * (2 ** len(kwargs["strides"]))
-        self.encoder = DACEncoder(d_latent=encoder_out_dim, **kwargs)
-        self.latent_dim = latent_dim
-
-        # Latent-dim support was added to DAC after this was first written, and implemented differently, so this is for backwards compatibility
-        self.proj_out = nn.Conv1d(self.encoder.enc_dim, latent_dim, kernel_size=1) if latent_dim is not None else nn.Identity()
-
-        if in_channels != 1:
-            self.encoder.block[0] = WNConv1d(in_channels, kwargs.get("d_model", 64), kernel_size=7, padding=3)
-
-    def forward(self, x):
-        x = self.encoder(x)
-        x = self.proj_out(x)
-        return x
-
-class DACDecoderWrapper(nn.Module):
-    def __init__(self, latent_dim, out_channels=1, **kwargs):
-        super().__init__()
-
-        from dac.model.dac import Decoder as DACDecoder
-
-        self.decoder = DACDecoder(**kwargs, input_channel = latent_dim, d_out=out_channels)
-
-        self.latent_dim = latent_dim
-
-    def forward(self, x):
-        return self.decoder(x)
 
 class AudioAutoencoder(nn.Module):
     def __init__(
@@ -359,18 +318,6 @@ class AudioAutoencoder(nn.Module):
             decoded = torch.tanh(decoded)
         
         return decoded
-          
-    def decode_tokens(self, tokens, **kwargs):
-        '''
-        Decode discrete tokens to audio
-        Only works with discrete autoencoders
-        '''
-
-        assert isinstance(self.bottleneck, DiscreteBottleneck), "decode_tokens only works with discrete autoencoders"
-
-        latents = self.bottleneck.decode_tokens(tokens, **kwargs)
-
-        return self.decode(latents, **kwargs)
         
     
     def preprocess_audio_for_encoder(self, audio, in_sr):
@@ -560,53 +507,7 @@ class AudioAutoencoder(nn.Module):
             return y_final
 
     
-class DiffusionAutoencoder(AudioAutoencoder):
-    def __init__(
-        self,
-        diffusion: ConditionedDiffusionModel,
-        diffusion_downsampling_ratio,
-        *args,
-        **kwargs
-    ):
-        super().__init__(*args, **kwargs)
 
-        self.diffusion = diffusion
-
-        self.min_length = self.downsampling_ratio * diffusion_downsampling_ratio
-
-        if self.encoder is not None:
-            # Shrink the initial encoder parameters to avoid saturated latents
-            with torch.no_grad():
-                for param in self.encoder.parameters():
-                    param *= 0.5
-
-    def decode(self, latents, steps=100):
-
-        upsampled_length = latents.shape[2] * self.downsampling_ratio
-
-        if self.bottleneck is not None:
-            latents = self.bottleneck.decode(latents)
-
-        if self.decoder is not None:
-            latents = self.decode(latents)
-    
-        # Upsample latents to match diffusion length
-        if latents.shape[2] != upsampled_length:
-            latents = F.interpolate(latents, size=upsampled_length, mode='nearest')
-
-        noise = torch.randn(latents.shape[0], self.io_channels, upsampled_length, device=latents.device)
-        decoded = sample(self.diffusion, noise, steps, 0, input_concat_cond=latents)
-
-        if self.pretransform is not None:
-            if self.pretransform.enable_grad:
-                decoded = self.pretransform.decode(decoded)
-            else:
-                with torch.no_grad():
-                    decoded = self.pretransform.decode(decoded)
-
-        return decoded
-        
-# AE factories
 
 def create_encoder_from_config(encoder_config: Dict[str, Any]):
     encoder_type = encoder_config.get("type", None)
@@ -617,27 +518,6 @@ def create_encoder_from_config(encoder_config: Dict[str, Any]):
             **encoder_config["config"]
         )
     
-    elif encoder_type == "seanet":
-        from encodec.modules import SEANetEncoder
-        seanet_encoder_config = encoder_config["config"]
-
-        #SEANet encoder expects strides in reverse order
-        seanet_encoder_config["ratios"] = list(reversed(seanet_encoder_config.get("ratios", [2, 2, 2, 2, 2])))
-        encoder = SEANetEncoder(
-            **seanet_encoder_config
-        )
-    elif encoder_type == "dac":
-        dac_config = encoder_config["config"]
-
-        encoder = DACEncoderWrapper(**dac_config)
-    elif encoder_type == "local_attn":
-        from .local_attention import TransformerEncoder1D
-
-        local_attn_config = encoder_config["config"]
-
-        encoder = TransformerEncoder1D(
-            **local_attn_config
-        )
     else:
         raise ValueError(f"Unknown encoder type {encoder_type}")
     
@@ -655,24 +535,6 @@ def create_decoder_from_config(decoder_config: Dict[str, Any]):
     if decoder_type == "oobleck":
         decoder = OobleckDecoder(
             **decoder_config["config"]
-        )
-    elif decoder_type == "seanet":
-        from encodec.modules import SEANetDecoder
-
-        decoder = SEANetDecoder(
-            **decoder_config["config"]
-        )
-    elif decoder_type == "dac":
-        dac_config = decoder_config["config"]
-
-        decoder = DACDecoderWrapper(**dac_config)
-    elif decoder_type == "local_attn":
-        from .local_attention import TransformerDecoder1D
-
-        local_attn_config = decoder_config["config"]
-
-        decoder = TransformerDecoder1D(
-            **local_attn_config
         )
     else:
         raise ValueError(f"Unknown decoder type {decoder_type}")
@@ -729,66 +591,3 @@ def create_autoencoder_from_config(config: Dict[str, Any]):
         soft_clip=soft_clip
     )
 
-def create_diffAE_from_config(config: Dict[str, Any]):
-    
-    diffae_config = config["model"]
-
-    if "encoder" in diffae_config:
-        encoder = create_encoder_from_config(diffae_config["encoder"])
-    else:
-        encoder = None
-
-    if "decoder" in diffae_config:
-        decoder = create_decoder_from_config(diffae_config["decoder"])
-    else:
-        decoder = None
-
-    diffusion_model_type = diffae_config["diffusion"]["type"]
-
-    if diffusion_model_type == "DAU1d":
-        diffusion = DAU1DCondWrapper(**diffae_config["diffusion"]["config"])
-    elif diffusion_model_type == "adp_1d":
-        diffusion = UNet1DCondWrapper(**diffae_config["diffusion"]["config"])
-    elif diffusion_model_type == "dit":
-        diffusion = DiTWrapper(**diffae_config["diffusion"]["config"])
-
-    latent_dim = diffae_config.get("latent_dim", None)
-    assert latent_dim is not None, "latent_dim must be specified in model config"
-    downsampling_ratio = diffae_config.get("downsampling_ratio", None)
-    assert downsampling_ratio is not None, "downsampling_ratio must be specified in model config"
-    io_channels = diffae_config.get("io_channels", None)
-    assert io_channels is not None, "io_channels must be specified in model config"
-    sample_rate = config.get("sample_rate", None)
-    assert sample_rate is not None, "sample_rate must be specified in model config"
-
-    bottleneck = diffae_config.get("bottleneck", None)
-
-    pretransform = diffae_config.get("pretransform", None)
-
-    if pretransform is not None:
-        pretransform = create_pretransform_from_config(pretransform, sample_rate)
-
-    if bottleneck is not None:
-        bottleneck = create_bottleneck_from_config(bottleneck)
-
-    diffusion_downsampling_ratio = None,
-
-    if diffusion_model_type == "DAU1d":
-        diffusion_downsampling_ratio = np.prod(diffae_config["diffusion"]["config"]["strides"])
-    elif diffusion_model_type == "adp_1d":
-        diffusion_downsampling_ratio = np.prod(diffae_config["diffusion"]["config"]["factors"])
-    elif diffusion_model_type == "dit":
-        diffusion_downsampling_ratio = 1
-
-    return DiffusionAutoencoder(
-        encoder=encoder,
-        decoder=decoder,
-        diffusion=diffusion,
-        io_channels=io_channels,
-        sample_rate=sample_rate,
-        latent_dim=latent_dim,
-        downsampling_ratio=downsampling_ratio,
-        diffusion_downsampling_ratio=diffusion_downsampling_ratio,
-        bottleneck=bottleneck,
-        pretransform=pretransform
-    )

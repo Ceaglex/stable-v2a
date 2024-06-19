@@ -6,8 +6,6 @@ import torchaudio
 import typing as tp
 import wandb
 
-from aeiou.viz import pca_point_cloud, audio_spectrogram_image, tokens_spectrogram_image
-import auraloss
 from ema_pytorch import EMA
 from einops import rearrange
 from safetensors.torch import save_file
@@ -16,11 +14,8 @@ from torch.nn import functional as F
 from pytorch_lightning.utilities.rank_zero import rank_zero_only
 
 from ..inference.sampling import get_alphas_sigmas, sample, sample_discrete_euler
-from ..models.diffusion import DiffusionModelWrapper, ConditionedDiffusionModelWrapper
-from ..models.autoencoders import DiffusionAutoencoder
-from ..models.diffusion_prior import PriorType
-from .autoencoders import create_loss_modules_from_bottleneck
-from .losses import AuralossLoss, MSELoss, MultiLoss
+from ..models.diffusion import ConditionedDiffusionModelWrapper
+from .losses import MSELoss, MultiLoss
 from .utils import create_optimizer_from_config, create_scheduler_from_config
 
 from time import time
@@ -104,6 +99,7 @@ class DiffusionCondTrainingWrapper(pl.LightningModule):
         self.optimizer_configs = optimizer_configs
         self.pre_encoded = pre_encoded
 
+
     def configure_optimizers(self):
         diffusion_opt_config = self.optimizer_configs['diffusion']
         opt_diff = create_optimizer_from_config(diffusion_opt_config['optimizer'], self.diffusion.parameters())
@@ -118,18 +114,19 @@ class DiffusionCondTrainingWrapper(pl.LightningModule):
 
         return [opt_diff]
 
+
     def training_step(self, batch, batch_idx):
         reals, metadata = batch
         loss_info = {}
 
-        diffusion_input = reals
+        diffusion_input = reals  #[batchsize, latent_dim = 64, seq]
 
         with torch.cuda.amp.autocast():
             conditioning = self.diffusion.conditioner(metadata, self.device)
-            # dict{"condition_name":(condition, mask)}
-        for key in conditioning:
-            print(key)
-            print(conditioning[key][0].shape, conditioning[key][1].shape)
+            # dict{"condition_name":(
+            #   condition,   [batchsize, seq, output_dim]
+            #   mask,        [batchsize, seq]
+            # )}
 
 
         # # If mask_padding is on, randomly drop the padding masks to allow for learning silence padding
@@ -157,7 +154,7 @@ class DiffusionCondTrainingWrapper(pl.LightningModule):
 
         if self.timestep_sampler == "uniform":
             # Draw uniformly distributed continuous timesteps
-            t = self.rng.draw(reals.shape[0])[:, 0].to(self.device)
+            t = self.rng.draw(reals.shape[0])[:, 0].to(self.device) # [batchsize]
         elif self.timestep_sampler == "logit_normal":
             t = torch.sigmoid(torch.randn(reals.shape[0], device=self.device))
             
@@ -184,9 +181,7 @@ class DiffusionCondTrainingWrapper(pl.LightningModule):
         #     extra_args["mask"] = padding_masks
 
         with torch.cuda.amp.autocast():
-            print("1111")
             output = self.diffusion(noised_inputs, t, cond=conditioning, cfg_dropout_prob = self.cfg_dropout_prob, **extra_args)
-            print("2222")
 
             loss_info.update({
                 "output": output,
@@ -195,8 +190,6 @@ class DiffusionCondTrainingWrapper(pl.LightningModule):
             })
 
             loss, losses = self.losses(loss_info)
-
-            p.tick("loss")
 
             if self.log_loss_info:
                 # Loss debugging logs

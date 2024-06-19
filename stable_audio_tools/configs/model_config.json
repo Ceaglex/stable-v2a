@@ -62,8 +62,7 @@
             "default_keys":{ "feature" :"video_path"}
         },
         "diffusion": {
-            "cross_attention_cond_ids": ["prompt", "seconds_start", "seconds_total"],
-            "global_cond_ids": ["seconds_start", "seconds_total"],
+            "cross_attention_cond_ids": ["feature"],
             "type": "dit",
             "config": {
                 "io_channels": 64,

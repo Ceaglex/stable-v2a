@@ -17,21 +17,15 @@ from torch import nn
 
 class Conditioner(nn.Module):
     def __init__(
-            self,
-            dim: int,
-            output_dim: int,
-            project_out: bool = False
-            ):
+            self
+        ):
         
         super().__init__()
-
-        self.dim = dim
-        self.output_dim = output_dim
-        self.proj_out = nn.Linear(dim, output_dim) if (dim != output_dim or project_out) else nn.Identity()
 
     def forward(self, x: tp.Any) -> tp.Any:
         raise NotImplementedError()
     
+
 
 class NumberConditioner(Conditioner):
     '''
@@ -42,7 +36,7 @@ class NumberConditioner(Conditioner):
                 min_val: float=0,
                 max_val: float=1
                 ):
-        super().__init__(output_dim, output_dim)
+        super().__init__()
 
         self.min_val = min_val
         self.max_val = max_val
@@ -68,21 +62,22 @@ class NumberConditioner(Conditioner):
             return [float_embeds, torch.ones(float_embeds.shape[0], 1).to(device)]
 
 
+
 class CLIPFeatConditioner(Conditioner):
     def __init__(self,
-                 output_dim,
                  **kargs):
         '''
             Get the video feature from restored feature or videos
         '''
-        super().__init__(768, output_dim)
+        super().__init__()
 
     def forward(self, data, device=None) -> tp.Any:
         if isinstance(data[0], str):
             pass
         elif isinstance(data[0], torch.Tensor):
             # TODO: attention MASK ?????
-            return [data.to(device), torch.ones_like(data).to(device)]  
+            # [batchsize, frame_num, output_dim]
+            return [data.to(device), torch.ones(data.shape[0], data.shape[1]).to(device)]  
         else:
             raise ValueError("data type for CLIPConditioner can only be str(directory path) or tensor(restored feature)")
 
@@ -104,7 +99,7 @@ class MultiConditioner(nn.Module):
         self.conditioners = nn.ModuleDict(conditioners)
         self.default_keys = default_keys
 
-    def forward(self, batch_metadata: tp.List[tp.Dict[str, tp.Any]], device: tp.Union[torch.device, str]) -> tp.Dict[str, tp.Any]:
+    def forward(self, batch_metadata: tp.Dict[str, tp.Any], device: tp.Union[torch.device, str]) -> tp.Dict[str, tp.Any]:
         output = {}
         for key, conditioner in self.conditioners.items():
             if key in batch_metadata and len(batch_metadata[key]) != 0:
@@ -113,8 +108,6 @@ class MultiConditioner(nn.Module):
                 key = self.default_keys[key]
             else:
                 continue
-            # print('\n',key, batch_metadata.keys(), self.default_keys.keys())
-            # print(batch_metadata[key])
             output[key] = conditioner(batch_metadata[key], device)
         
         if len(output) == 0:
