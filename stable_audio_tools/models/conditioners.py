@@ -1,17 +1,9 @@
 #Heavily influenced by https://github.com/facebookresearch/audiocraft/blob/main/audiocraft/modules/conditioners.py
 
 import torch
-import logging, warnings
-import string
 import typing as tp
-import gc
 
 from .adp import NumberEmbedder
-from ..inference.utils import set_audio_channels
-from .factory import create_pretransform_from_config
-from .pretransforms import Pretransform
-from ..training.utils import copy_state_dict
-from .utils import load_ckpt_state_dict
 
 from torch import nn
 

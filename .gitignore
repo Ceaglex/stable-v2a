@@ -4,5 +4,6 @@
 *.safetensors
 *.pt
 *.out
+*.ckpt
 
 /build
