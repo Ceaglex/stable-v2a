@@ -17,7 +17,6 @@ def create_model_from_config_path(model_config_path):
     return create_model_from_config(model_config)
 
 
-
 def create_pretransform_from_config(pretransform_config, sample_rate):
     pretransform_type = pretransform_config.get('type', None)
     assert pretransform_type is not None, 'type must be specified in pretransform config'
@@ -44,7 +43,6 @@ def create_pretransform_from_config(pretransform_config, sample_rate):
     pretransform.enable_grad = enable_grad
     pretransform.eval().requires_grad_(pretransform.enable_grad)
     return pretransform
-
 
 
 def create_bottleneck_from_config(bottleneck_config):
