@@ -272,82 +272,58 @@ class DiTWrapper(ConditionedDiffusionModel):
 
 def create_diffusion_cond_from_config(config: tp.Dict[str, tp.Any]):
 
-    ############################################## LOAD DIFFUSION MODEL ##############################################
+
+    ############################################## SOME GLOBAL ARGS ##################################################
     model_config = config["model"]
-    diffusion_config = model_config.get('diffusion', None)
-    assert diffusion_config is not None, "Must specify diffusion config"
-
-    diffusion_model_type = diffusion_config.get('type', None)
-    assert diffusion_model_type is not None, "Must specify diffusion model type"
-
-    diffusion_model_config = diffusion_config.get('config', None)
-    assert diffusion_model_config is not None, "Must specify diffusion model config"
-
-
-    if diffusion_model_type == 'dit':
-        diffusion_model = DiTWrapper(**diffusion_model_config)
-    else:
-        raise NotImplementedError(f'Unknown model type: {model_type}')
-    ############################################## LOAD DIFFUSION MODEL ##############################################
-
-
-
-
-    ############################################## SOME ARGS ##############################################
-    model_type = config["model_type"]
-    io_channels = model_config.get('io_channels', None)
-    assert io_channels is not None, "Must specify io_channels in model config"
     sample_rate = config.get('sample_rate', None)
+    io_channels = model_config.get('io_channels', None)
+    
+    assert io_channels is not None, "Must specify io_channels in model config"
     assert sample_rate is not None, "Must specify sample_rate in config"
+    ############################################## SOME GLOBAL ARGS ##################################################
 
-    diffusion_objective = diffusion_config.get('diffusion_objective', 'v')
-    cross_attention_ids = diffusion_config.get('cross_attention_cond_ids', [])
-    global_cond_ids = diffusion_config.get('global_cond_ids', [])
-    input_concat_ids = diffusion_config.get('input_concat_ids', [])
-    prepend_cond_ids = diffusion_config.get('prepend_cond_ids', [])
-    ############################################## SOME ARGS ##############################################
+
+
+    ############################################  DIFFUSION MODEL ####################################################
+    diffusion_config = model_config['diffusion']
+    diffusion_model_config = diffusion_config.get('config', None)
+
+    assert diffusion_model_config is not None, "Must specify diffusion model config"
+    diffusion_model = DiTWrapper(**diffusion_model_config)
+    ############################################  DIFFUSION MODEL ####################################################
+
 
 
 
     ############################################## CONDITIONER ##############################################
     conditioning_config = model_config.get('conditioning', None)
-    conditioner = None
-    if conditioning_config is not None:
-        conditioner = create_multi_conditioner_from_conditioning_config(conditioning_config)
+
+    assert conditioning_config is not None, "Must specify conditioning model config"
+    conditioner = create_multi_conditioner_from_conditioning_config(conditioning_config)
     ############################################## CONDITIONER ##############################################
 
 
 
-
     ############################################## PRETRANSFORM (VAE) ##############################################
-    pretransform = model_config.get("pretransform", None)
-    if pretransform is not None:
-        pretransform = create_pretransform_from_config(pretransform, sample_rate)
-        min_input_length = pretransform.downsampling_ratio
-    else:
-        min_input_length = 1
+    pretransform_config = model_config.get("pretransform", None)
 
-    if diffusion_model_type == "adp_cfg_1d" or diffusion_model_type == "adp_1d":
-        min_input_length *= np.prod(diffusion_model_config["factors"])
-    elif diffusion_model_type == "dit":
-        min_input_length *= diffusion_model.model.patch_size
+    assert pretransform_config is not None, "Must specify pretransform model config"
+    pretransform = create_pretransform_from_config(pretransform_config, sample_rate)
+    min_input_length = pretransform.downsampling_ratio * diffusion_model.model.patch_size
     ############################################## PRETRANSFORM (VAE) ##############################################
 
     
-    # Get the proper wrapper class
-    extra_kwargs = {}
-    if model_type == "diffusion_cond" or model_type == "diffusion_cond_inpaint":
-        wrapper_fn = ConditionedDiffusionModelWrapper
-        extra_kwargs["diffusion_objective"] = diffusion_objective
-    elif model_type == "diffusion_prior":
-        prior_type = model_config.get("prior_type", None)
-        assert prior_type is not None, "Must specify prior_type in diffusion prior model config"
-        if prior_type == "mono_stereo":
-            from .diffusion_prior import MonoToStereoDiffusionPrior
-            wrapper_fn = MonoToStereoDiffusionPrior
-            
-        
-    return wrapper_fn(
+    ############################################# DIFFUSION MODEL ARGS #############################################
+    cross_attention_ids = diffusion_config.get('cross_attention_cond_ids', [])
+    global_cond_ids = diffusion_config.get('global_cond_ids', [])
+    input_concat_ids = diffusion_config.get('input_concat_ids', [])
+    prepend_cond_ids = diffusion_config.get('prepend_cond_ids', [])
+    diffusion_objective = diffusion_config.get('diffusion_objective', 'v')
+    extra_kwargs = {"diffusion_objective":diffusion_objective}
+    ############################################# DIFFUSION MODEL ARGS #############################################
+
+    # Return the proper wrapper class
+    return ConditionedDiffusionModelWrapper(
         diffusion_model,
         conditioner,
         min_input_length=min_input_length,

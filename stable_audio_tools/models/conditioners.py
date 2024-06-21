@@ -118,22 +118,17 @@ def create_multi_conditioner_from_conditioning_config(config: tp.Dict[str, tp.An
     """
     conditioners = {}
     cond_dim = config["cond_dim"]
-    
     default_keys = config.get("default_keys", {})
 
     for conditioner_info in config["configs"]:
         id = conditioner_info["id"]
-
         conditioner_type = conditioner_info["type"]
         conditioner_config = {"output_dim": cond_dim}
-        
         conditioner_config.update(conditioner_info["config"])
-
 
         if conditioner_type == "number":
             conditioners[id] = NumberConditioner(**conditioner_config)
         elif conditioner_type == "video_feature":
             conditioners[id] = CLIPFeatConditioner(**conditioner_config)
-
 
     return MultiConditioner(conditioners, default_keys=default_keys)
