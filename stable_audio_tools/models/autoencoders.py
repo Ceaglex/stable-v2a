@@ -14,9 +14,11 @@ from .bottleneck import Bottleneck
 from .factory import create_pretransform_from_config, create_bottleneck_from_config
 from .pretransforms import Pretransform
 
+
 def checkpoint(function, *args, **kwargs):
     kwargs.setdefault("use_reentrant", False)
     return torch.utils.checkpoint.checkpoint(function, *args, **kwargs)
+
 
 def get_activation(activation: Literal["elu", "snake", "none"], antialias=False, channels=None) -> nn.Module:
     if activation == "elu":
@@ -32,6 +34,7 @@ def get_activation(activation: Literal["elu", "snake", "none"], antialias=False,
         act = Activation1d(act)
     
     return act
+
 
 class ResidualUnit(nn.Module):
     def __init__(self, in_channels, out_channels, dilation, use_snake=False, antialias_activation=False):
@@ -58,6 +61,7 @@ class ResidualUnit(nn.Module):
 
         return x + res
 
+
 class EncoderBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride, use_snake=False, antialias_activation=False):
         super().__init__()
@@ -76,6 +80,7 @@ class EncoderBlock(nn.Module):
 
     def forward(self, x):
         return self.layers(x)
+
 
 class DecoderBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride, use_snake=False, antialias_activation=False, use_nearest_upsample=False):
@@ -110,6 +115,7 @@ class DecoderBlock(nn.Module):
     def forward(self, x):
         return self.layers(x)
 
+
 class OobleckEncoder(nn.Module):
     def __init__(self, 
                  in_channels=2, 
@@ -142,6 +148,7 @@ class OobleckEncoder(nn.Module):
 
     def forward(self, x):
         return self.layers(x)
+
 
 class OobleckDecoder(nn.Module):
     def __init__(self, 
@@ -185,6 +192,7 @@ class OobleckDecoder(nn.Module):
 
     def forward(self, x):
         return self.layers(x)
+
 
 class AudioAutoencoder(nn.Module):
     def __init__(
@@ -528,6 +536,8 @@ def create_encoder_from_config(encoder_config: Dict[str, Any]):
 
     return encoder
 
+
+
 def create_decoder_from_config(decoder_config: Dict[str, Any]):
     decoder_type = decoder_config.get("type", None)
     assert decoder_type is not None, "Decoder type must be specified"
@@ -545,6 +555,8 @@ def create_decoder_from_config(decoder_config: Dict[str, Any]):
             param.requires_grad = False
 
     return decoder
+
+
 
 def create_autoencoder_from_config(config: Dict[str, Any]):
     

@@ -27,6 +27,7 @@ class Pretransform(nn.Module):
         raise NotImplementedError
 
 
+
 class AutoencoderPretransform(Pretransform):
     def __init__(self, model, scale=1.0, model_half=False, iterate_batch=False, chunked=False):
         super().__init__(enable_grad=False, io_channels=model.io_channels, is_discrete=model.bottleneck is not None and model.bottleneck.is_discrete)

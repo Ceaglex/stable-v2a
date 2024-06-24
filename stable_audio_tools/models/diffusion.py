@@ -136,9 +136,10 @@ class ConditionedDiffusionModelWrapper(nn.Module):
         prepend_cond = None
         prepend_cond_mask = None
 
+        # Concatenate all cross-attention inputs over the sequence dimension
+        # Assumes that the cross-attention inputs are of shape (batch, seq, channels)
         if len(self.cross_attn_cond_ids) > 0:
-            # Concatenate all cross-attention inputs over the sequence dimension
-            # Assumes that the cross-attention inputs are of shape (batch, seq, channels)
+
             cross_attention_input = []
             cross_attention_masks = []
 
@@ -156,9 +157,11 @@ class ConditionedDiffusionModelWrapper(nn.Module):
             cross_attention_input = torch.cat(cross_attention_input, dim=1)
             cross_attention_masks = torch.cat(cross_attention_masks, dim=1)
 
+
+        # Concatenate all global conditioning inputs over the channel dimension
+        # Assumes that the global conditioning inputs are of shape (batch, channels)
         if len(self.global_cond_ids) > 0:
-            # Concatenate all global conditioning inputs over the channel dimension
-            # Assumes that the global conditioning inputs are of shape (batch, channels)
+
             global_conds = []
             for key in self.global_cond_ids:
                 global_cond_input = conditioning_tensors[key][0]
@@ -171,14 +174,17 @@ class ConditionedDiffusionModelWrapper(nn.Module):
             if len(global_cond.shape) == 3:
                 global_cond = global_cond.squeeze(1)
 
+
+        # Concatenate all input concat conditioning inputs over the channel dimension
+        # Assumes that the input concat conditioning inputs are of shape (batch, channels, seq)
         if len(self.input_concat_ids) > 0:
-            # Concatenate all input concat conditioning inputs over the channel dimension
-            # Assumes that the input concat conditioning inputs are of shape (batch, channels, seq)
             input_concat_cond = torch.cat([conditioning_tensors[key][0] for key in self.input_concat_ids], dim=1)
 
+
+        # Concatenate all prepend conditioning inputs over the sequence dimension
+        # Assumes that the prepend conditioning inputs are of shape (batch, seq, channels)
         if len(self.prepend_cond_ids) > 0:
-            # Concatenate all prepend conditioning inputs over the sequence dimension
-            # Assumes that the prepend conditioning inputs are of shape (batch, seq, channels)
+
             prepend_conds = []
             prepend_cond_masks = []
 
@@ -189,6 +195,7 @@ class ConditionedDiffusionModelWrapper(nn.Module):
 
             prepend_cond = torch.cat(prepend_conds, dim=1)
             prepend_cond_mask = torch.cat(prepend_cond_masks, dim=1)
+
 
         if negative:
             return {
@@ -209,6 +216,7 @@ class ConditionedDiffusionModelWrapper(nn.Module):
 
     def forward(self, x: torch.Tensor, t: torch.Tensor, cond: tp.Dict[str, tp.Any], **kwargs):
         return self.model(x, t, **self.get_conditioning_inputs(cond), **kwargs)
+
 
     def generate(self, *args, **kwargs):
         return generate_diffusion_cond(self, *args, **kwargs)
@@ -250,7 +258,6 @@ class DiTWrapper(ConditionedDiffusionModel):
 
         assert batch_cfg, "batch_cfg must be True for DiTWrapper"
         #assert negative_input_concat_cond is None, "negative_input_concat_cond is not supported for DiTWrapper"
-
         return self.model(
             x,
             t,
@@ -280,7 +287,7 @@ def create_diffusion_cond_from_config(config: tp.Dict[str, tp.Any]):
     
     assert io_channels is not None, "Must specify io_channels in model config"
     assert sample_rate is not None, "Must specify sample_rate in config"
-    ############################################## SOME GLOBAL ARGS ##################################################
+    
 
 
 
@@ -290,7 +297,7 @@ def create_diffusion_cond_from_config(config: tp.Dict[str, tp.Any]):
 
     assert diffusion_model_config is not None, "Must specify diffusion model config"
     diffusion_model = DiTWrapper(**diffusion_model_config)
-    ############################################  DIFFUSION MODEL ####################################################
+    
 
 
 
@@ -300,7 +307,7 @@ def create_diffusion_cond_from_config(config: tp.Dict[str, tp.Any]):
 
     assert conditioning_config is not None, "Must specify conditioning model config"
     conditioner = create_multi_conditioner_from_conditioning_config(conditioning_config)
-    ############################################## CONDITIONER ##############################################
+    
 
 
 
@@ -310,7 +317,9 @@ def create_diffusion_cond_from_config(config: tp.Dict[str, tp.Any]):
     assert pretransform_config is not None, "Must specify pretransform model config"
     pretransform = create_pretransform_from_config(pretransform_config, sample_rate)
     min_input_length = pretransform.downsampling_ratio * diffusion_model.model.patch_size
-    ############################################## PRETRANSFORM (VAE) ##############################################
+    
+    
+
 
     
     ############################################# DIFFUSION MODEL ARGS #############################################
@@ -320,7 +329,10 @@ def create_diffusion_cond_from_config(config: tp.Dict[str, tp.Any]):
     prepend_cond_ids = diffusion_config.get('prepend_cond_ids', [])
     diffusion_objective = diffusion_config.get('diffusion_objective', 'v')
     extra_kwargs = {"diffusion_objective":diffusion_objective}
-    ############################################# DIFFUSION MODEL ARGS #############################################
+    
+    
+    
+
 
     # Return the proper wrapper class
     return ConditionedDiffusionModelWrapper(

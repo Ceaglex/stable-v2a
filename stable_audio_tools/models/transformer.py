@@ -26,7 +26,6 @@ def checkpoint(function, *args, **kwargs):
     kwargs.setdefault("use_reentrant", False)
     return torch.utils.checkpoint.checkpoint(function, *args, **kwargs)
 
-
 # Copied and modified from https://github.com/lucidrains/x-transformers/blob/main/x_transformers/attend.py under MIT License
 # License can be found in LICENSES/LICENSE_XTRANSFORMERS.txt
 
@@ -648,6 +647,7 @@ class TransformerBlock(nn.Module):
         context_mask = None,
         rotary_pos_emb = None
     ):
+        
         if self.global_cond_dim is not None and self.global_cond_dim > 0 and global_cond is not None:
             
             scale_self, shift_self, gate_self, scale_ff, shift_ff, gate_ff = self.to_scale_shift_gate(global_cond).unsqueeze(1).chunk(6, dim = -1)
@@ -678,8 +678,10 @@ class TransformerBlock(nn.Module):
             x = x + self.self_attn(self.pre_norm(x), mask = mask, rotary_pos_emb = rotary_pos_emb)
 
             if context is not None:
+                print(x.shape, context.shape, context_mask)
                 x = x + self.cross_attn(self.cross_attend_norm(x), context = context, context_mask = context_mask)
 
+            # None
             if self.conformer is not None:
                 x = x + self.conformer(x)
 
@@ -759,7 +761,6 @@ class ContinuousTransformer(nn.Module):
         **kwargs
     ):
         batch, seq, device = *x.shape[:2], x.device
-
         info = {
             "hidden_states": [],
         }
@@ -768,30 +769,33 @@ class ContinuousTransformer(nn.Module):
 
         if prepend_embeds is not None:
             prepend_length, prepend_dim = prepend_embeds.shape[1:]
-
             assert prepend_dim == x.shape[-1], 'prepend dimension must match sequence dimension'
 
-            x = torch.cat((prepend_embeds, x), dim = -2)
+            x = torch.cat((prepend_embeds, x), dim = -2)   # [batchsize, prepend_length + audio_seq_length, dim]
 
             if prepend_mask is not None or mask is not None:
                 mask = mask if mask is not None else torch.ones((batch, seq), device = device, dtype = torch.bool)
                 prepend_mask = prepend_mask if prepend_mask is not None else torch.ones((batch, prepend_length), device = device, dtype = torch.bool)
+                mask = torch.cat((prepend_mask, mask), dim = -1)  # [batchsize, prepend_length + audio_seq_length]
 
-                mask = torch.cat((prepend_mask, mask), dim = -1)
-
+        
         # Attention layers 
         if self.rotary_pos_emb is not None:
-            rotary_pos_emb = self.rotary_pos_emb.forward_from_seq_len(x.shape[1])
+            rotary_pos_emb = self.rotary_pos_emb.forward_from_seq_len(x.shape[1]) 
+            # (Tensor([seq_len, 32], 1)
         else:
             rotary_pos_emb = None
+
 
         if self.use_sinusoidal_emb or self.use_abs_pos_emb:
             x = x + self.pos_emb(x)
 
+
         # Iterate over the transformer layers
         for layer in self.layers:
-            #x = layer(x, rotary_pos_emb = rotary_pos_emb, global_cond=global_cond, **kwargs)
-            x = checkpoint(layer, x, rotary_pos_emb = rotary_pos_emb, global_cond=global_cond, **kwargs)
+            # global_cond = None
+            x = layer(x, rotary_pos_emb = rotary_pos_emb, global_cond=global_cond, **kwargs)
+            # x = checkpoint(layer, x, rotary_pos_emb = rotary_pos_emb, global_cond=global_cond, **kwargs)
 
             if return_info:
                 info["hidden_states"].append(x)

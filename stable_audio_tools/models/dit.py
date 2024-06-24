@@ -29,22 +29,20 @@ class DiffusionTransformer(nn.Module):
 
         super().__init__()
         
-        self.cond_token_dim = cond_token_dim
+        
 
         # Timestep embeddings
         timestep_features_dim = 256
-
         self.timestep_features = FourierFeatures(1, timestep_features_dim)
-
         self.to_timestep_embed = nn.Sequential(
             nn.Linear(timestep_features_dim, embed_dim, bias=True),
             nn.SiLU(),
             nn.Linear(embed_dim, embed_dim, bias=True),
         )
 
-        if cond_token_dim > 0:
-            # Conditioning tokens
 
+        # Conditioning tokens
+        if cond_token_dim > 0:
             cond_embed_dim = cond_token_dim if not project_cond_tokens else embed_dim
             self.to_cond_embed = nn.Sequential(
                 nn.Linear(cond_token_dim, cond_embed_dim, bias=False),
@@ -54,8 +52,9 @@ class DiffusionTransformer(nn.Module):
         else:
             cond_embed_dim = 0
 
+
+        # Global conditioning
         if global_cond_dim > 0:
-            # Global conditioning
             global_embed_dim = global_cond_dim if not project_global_cond else embed_dim
             self.to_global_embed = nn.Sequential(
                 nn.Linear(global_cond_dim, global_embed_dim, bias=False),
@@ -63,25 +62,27 @@ class DiffusionTransformer(nn.Module):
                 nn.Linear(global_embed_dim, global_embed_dim, bias=False)
             )
 
+
+        # Prepend conditioning
         if prepend_cond_dim > 0:
-            # Prepend conditioning
             self.to_prepend_embed = nn.Sequential(
                 nn.Linear(prepend_cond_dim, embed_dim, bias=False),
                 nn.SiLU(),
                 nn.Linear(embed_dim, embed_dim, bias=False)
             )
 
+
         self.input_concat_dim = input_concat_dim
+        self.cond_token_dim = cond_token_dim
 
         dim_in = io_channels + self.input_concat_dim
-
         self.patch_size = patch_size
 
+
         # Transformer
-
         self.transformer_type = transformer_type
-
         self.global_cond_type = global_cond_type
+
 
         if self.transformer_type == "x-transformers":
             self.transformer = ContinuousTransformerWrapper(
@@ -105,13 +106,10 @@ class DiffusionTransformer(nn.Module):
             )
 
         elif self.transformer_type == "continuous_transformer":
-
             global_dim = None
-
+            # The global conditioning is projected to the embed_dim already at this point
             if self.global_cond_type == "adaLN":
-                # The global conditioning is projected to the embed_dim already at this point
                 global_dim = embed_dim
-
             self.transformer = ContinuousTransformer(
                 dim=embed_dim,
                 depth=depth,
@@ -146,11 +144,14 @@ class DiffusionTransformer(nn.Module):
         return_info=False,
         **kwargs):
 
+
         if cross_attn_cond is not None:
+            '''[batchsize, seq_len, cond_token_dim]  ---->   [batchsize, seq_len, cond_embed_dim]'''
             cross_attn_cond = self.to_cond_embed(cross_attn_cond)
 
+
+        ######################################## None ########################################
         if global_embed is not None:
-            # Project the global conditioning to the embedding dimension
             global_embed = self.to_global_embed(global_embed)
 
         prepend_inputs = None 
@@ -159,68 +160,73 @@ class DiffusionTransformer(nn.Module):
         if prepend_cond is not None:
             # Project the prepend conditioning to the embedding dimension
             prepend_cond = self.to_prepend_embed(prepend_cond)
-            
             prepend_inputs = prepend_cond
             if prepend_cond_mask is not None:
                 prepend_mask = prepend_cond_mask
 
         if input_concat_cond is not None:
-
             # Interpolate input_concat_cond to the same length as x
             if input_concat_cond.shape[2] != x.shape[2]:
                 input_concat_cond = F.interpolate(input_concat_cond, (x.shape[2], ), mode='nearest')
-
             x = torch.cat([x, input_concat_cond], dim=1)
+        ######################################## None ########################################
+
 
         # Get the batch of timestep embeddings
-        timestep_embed = self.to_timestep_embed(self.timestep_features(t[:, None])) # (b, embed_dim)
+        timestep_embed = self.to_timestep_embed(self.timestep_features(t[:, None])) # [batchsize, embed_dim]
+
 
         # Timestep embedding is considered a global embedding. Add to the global conditioning if it exists
         if global_embed is not None:
             global_embed = global_embed + timestep_embed
         else:
-            global_embed = timestep_embed
+            global_embed = timestep_embed         # [batchsize, embed_dim]
+
 
         # Add the global_embed to the prepend inputs if there is no global conditioning support in the transformer
         if self.global_cond_type == "prepend":
             if prepend_inputs is None:
                 # Prepend inputs are just the global embed, and the mask is all ones
-                prepend_inputs = global_embed.unsqueeze(1)
-                prepend_mask = torch.ones((x.shape[0], 1), device=x.device, dtype=torch.bool)
+                prepend_inputs = global_embed.unsqueeze(1)                                        # [batchsize, 1, embed_dim=1536]
+                prepend_mask = torch.ones((x.shape[0], 1), device=x.device, dtype=torch.bool)     # [batchsize, 1]
             else:
                 # Prepend inputs are the prepend conditioning + the global embed
                 prepend_inputs = torch.cat([prepend_inputs, global_embed.unsqueeze(1)], dim=1)
                 prepend_mask = torch.cat([prepend_mask, torch.ones((x.shape[0], 1), device=x.device, dtype=torch.bool)], dim=1)
-
             prepend_length = prepend_inputs.shape[1]
 
-        x = self.preprocess_conv(x) + x
-
-        x = rearrange(x, "b c t -> b t c")
+        x = self.preprocess_conv(x) + x        # [batchsize, hidden_dim(VAE), timestep]
+        x = rearrange(x, "b c t -> b t c")     # [batchsize, timestep, hidden_dim(VAE)]
 
         extra_args = {}
-
         if self.global_cond_type == "adaLN":
-            extra_args["global_cond"] = global_embed
+            extra_args["global_cond"] = global_embed      
 
         if self.patch_size > 1:
             x = rearrange(x, "b (t p) c -> b t (c p)", p=self.patch_size)
 
+
+
         if self.transformer_type == "x-transformers":
             output = self.transformer(x, prepend_embeds=prepend_inputs, context=cross_attn_cond, context_mask=cross_attn_cond_mask, mask=mask, prepend_mask=prepend_mask, **extra_args, **kwargs)
         elif self.transformer_type == "continuous_transformer":
+            # x: input sequence                                               [batchsize, audio_seq_len, hidden_dim(VAE)]
+            # prepend_embeds: time condition, as a global conditiom           [batchsize, 1, embed_dim=1536]
+            # context: video feature condition, use for cross attention       [batchsize, seq_len, cond_embed_dim]
+            # cross_attn_cond_mask, mask = None
+            # prepend_mask :                                                  [batchsize, 1], True
             output = self.transformer(x, prepend_embeds=prepend_inputs, context=cross_attn_cond, context_mask=cross_attn_cond_mask, mask=mask, prepend_mask=prepend_mask, return_info=return_info, **extra_args, **kwargs)
             if return_info:
                 output, info = output
         elif self.transformer_type == "mm_transformer":
             output = self.transformer(x, context=cross_attn_cond, mask=mask, context_mask=cross_attn_cond_mask, **extra_args, **kwargs)
 
-        output = rearrange(output, "b t c -> b c t")[:,:,prepend_length:]
 
+        output = rearrange(output, "b t c -> b c t")[:,:,prepend_length:]
         if self.patch_size > 1:
             output = rearrange(output, "b (c p) t -> b c (t p)", p=self.patch_size)
-
         output = self.postprocess_conv(output) + output
+
 
         if return_info:
             return output, info
@@ -252,7 +258,6 @@ class DiffusionTransformer(nn.Module):
 
         if cross_attn_cond_mask is not None:
             cross_attn_cond_mask = cross_attn_cond_mask.bool()
-
             cross_attn_cond_mask = None # Temporarily disabling conditioning masks due to kernel issue for flash attention
 
         if prepend_cond_mask is not None:
@@ -270,10 +275,10 @@ class DiffusionTransformer(nn.Module):
                 dropout_mask = torch.bernoulli(torch.full((prepend_cond.shape[0], 1, 1), cfg_dropout_prob, device=prepend_cond.device)).to(torch.bool)
                 prepend_cond = torch.where(dropout_mask, null_embed, prepend_cond)
 
-
+        # Classifier-free guidance
+        # Concatenate conditioned and unconditioned inputs on the batch dimension            
         if cfg_scale != 1.0 and (cross_attn_cond is not None or prepend_cond is not None):
-            # Classifier-free guidance
-            # Concatenate conditioned and unconditioned inputs on the batch dimension            
+
             batch_inputs = torch.cat([x, x], dim=0)
             batch_timestep = torch.cat([t, t], dim=0)
 

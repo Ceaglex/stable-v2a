@@ -3,6 +3,7 @@ import typing as tp
 from torch.nn import functional as F
 from torch import nn
 
+
 class LossModule(nn.Module):
     def __init__(self, name: str, weight: float = 1.0):
         super().__init__()
@@ -13,6 +14,7 @@ class LossModule(nn.Module):
     def forward(self, info, *args, **kwargs):
         raise NotImplementedError
     
+
 class ValueLoss(LossModule):
     def __init__(self, key: str, name, weight: float = 1.0):
         super().__init__(name=name, weight=weight)
@@ -21,6 +23,7 @@ class ValueLoss(LossModule):
     
     def forward(self, info):
         return self.weight * info[self.key]
+
 
 class L1Loss(LossModule):
     def __init__(self, key_a: str, key_b: str, weight: float = 1.0, mask_key: str = None, name: str = 'l1_loss'):
@@ -41,6 +44,7 @@ class L1Loss(LossModule):
 
         return self.weight * mse_loss
     
+
 class MSELoss(LossModule):
     def __init__(self, key_a: str, key_b: str, weight: float = 1.0, mask_key: str = None, name: str = 'mse_loss'):
         super().__init__(name=name, weight=weight)
@@ -68,6 +72,7 @@ class MSELoss(LossModule):
 
         return self.weight * mse_loss
     
+
 class AuralossLoss(LossModule):
     def __init__(self, auraloss_module, input_key: str, target_key: str, name: str, weight: float = 1):
         super().__init__(name, weight)
@@ -81,6 +86,7 @@ class AuralossLoss(LossModule):
         loss = self.auraloss_module(info[self.input_key], info[self.target_key])
 
         return self.weight * loss
+    
     
 class MultiLoss(nn.Module):
     def __init__(self, losses: tp.List[LossModule]):

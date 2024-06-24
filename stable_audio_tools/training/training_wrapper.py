@@ -119,14 +119,13 @@ class DiffusionCondTrainingWrapper(pl.LightningModule):
         reals, metadata = batch
         loss_info = {}
 
-        diffusion_input = reals  #[batchsize, latent_dim = 64, seq]
+        '''[batchsize, latent_dim = 64, seq]'''
+        diffusion_input = reals  
 
         with torch.cuda.amp.autocast():
+            ''' dict{"condition_name":(condition,  mask)}   ([batchsize, seq, output_dim], [batchsize, seq]) '''
             conditioning = self.diffusion.conditioner(metadata, self.device)
-            # dict{"condition_name":(
-            #   condition,   [batchsize, seq, output_dim]
-            #   mask,        [batchsize, seq]
-            # )}
+
 
 
         # # If mask_padding is on, randomly drop the padding masks to allow for learning silence padding
@@ -143,7 +142,6 @@ class DiffusionCondTrainingWrapper(pl.LightningModule):
             if not self.pre_encoded:
                 with torch.cuda.amp.autocast() and torch.set_grad_enabled(self.diffusion.pretransform.enable_grad):
                     diffusion_input = self.diffusion.pretransform.encode(diffusion_input)
-
                     # If mask_padding is on, interpolate the padding masks to the size of the pretransformed input
                     # if use_padding_mask:
                     #     padding_masks = F.interpolate(padding_masks.unsqueeze(1).float(), size=diffusion_input.shape[2], mode="nearest").squeeze(1).bool()
@@ -152,23 +150,27 @@ class DiffusionCondTrainingWrapper(pl.LightningModule):
                 if hasattr(self.diffusion.pretransform, "scale") and self.diffusion.pretransform.scale != 1.0:
                     diffusion_input = diffusion_input / self.diffusion.pretransform.scale
 
-        if self.timestep_sampler == "uniform":
+        if self.timestep_sampler == "uniform":   
             # Draw uniformly distributed continuous timesteps
-            t = self.rng.draw(reals.shape[0])[:, 0].to(self.device) # [batchsize]
+            ''' [batchsize] '''
+            t = self.rng.draw(reals.shape[0])[:, 0].to(self.device) 
         elif self.timestep_sampler == "logit_normal":
             t = torch.sigmoid(torch.randn(reals.shape[0], device=self.device))
             
+
         # Calculate the noise schedule parameters for those timesteps
         if self.diffusion_objective == "v":
             alphas, sigmas = get_alphas_sigmas(t)
         elif self.diffusion_objective == "rectified_flow":
             alphas, sigmas = 1-t, t
 
+
         # Combine the ground truth data and the noise
         alphas = alphas[:, None, None]
         sigmas = sigmas[:, None, None]
         noise = torch.randn_like(diffusion_input)
         noised_inputs = diffusion_input * alphas + noise * sigmas
+
 
         if self.diffusion_objective == "v":
             targets = noise * alphas - diffusion_input * sigmas
