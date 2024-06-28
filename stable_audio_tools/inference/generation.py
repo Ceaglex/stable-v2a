@@ -151,6 +151,7 @@ def generate_diffusion_cond(
     if conditioning_tensors is None:
         conditioning_tensors = model.conditioner(conditioning, device)
     conditioning_inputs = model.get_conditioning_inputs(conditioning_tensors)
+    # print(type(conditioning_inputs), conditioning_inputs.keys(), conditioning_inputs['cross_attn_cond'].shape, conditioning_inputs['cross_attn_mask'].shape ,conditioning_inputs['global_cond'], conditioning_inputs['input_concat_cond'], conditioning_inputs['prepend_cond'], conditioning_inputs['prepend_cond_mask'])
 
     if negative_conditioning is not None or negative_conditioning_tensors is not None:
         

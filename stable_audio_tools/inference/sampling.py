@@ -122,7 +122,6 @@ def sample_k(
         cond_fn=None,
         **extra_args
     ):
-
     denoiser = K.external.VDenoiser(model_fn)
 
     if cond_fn is not None:

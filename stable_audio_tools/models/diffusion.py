@@ -215,6 +215,7 @@ class ConditionedDiffusionModelWrapper(nn.Module):
             }
 
     def forward(self, x: torch.Tensor, t: torch.Tensor, cond: tp.Dict[str, tp.Any], **kwargs):
+        # print(cond.keys(), cond['cross_attn_cond'].shape, cond['cross_attn_mask'].shape)
         return self.model(x, t, **self.get_conditioning_inputs(cond), **kwargs)
 
 
@@ -255,6 +256,8 @@ class DiTWrapper(ConditionedDiffusionModel):
                 rescale_cfg: bool = False,
                 scale_phi: float = 0.0,
                 **kwargs):
+        # train: cfg_scale = 1, cfg_dropout_prob = 0.1
+        # sample: cfg_scale = 7, cfg_dropout_prob = 0
 
         assert batch_cfg, "batch_cfg must be True for DiTWrapper"
         #assert negative_input_concat_cond is None, "negative_input_concat_cond is not supported for DiTWrapper"

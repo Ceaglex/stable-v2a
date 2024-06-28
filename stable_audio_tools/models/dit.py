@@ -275,6 +275,9 @@ class DiffusionTransformer(nn.Module):
                 dropout_mask = torch.bernoulli(torch.full((prepend_cond.shape[0], 1, 1), cfg_dropout_prob, device=prepend_cond.device)).to(torch.bool)
                 prepend_cond = torch.where(dropout_mask, null_embed, prepend_cond)
 
+        # print(x.shape, cross_attn_cond.shape)
+        # print(mask.shape)
+
         # Classifier-free guidance
         # Concatenate conditioned and unconditioned inputs on the batch dimension            
         if cfg_scale != 1.0 and (cross_attn_cond is not None or prepend_cond is not None):

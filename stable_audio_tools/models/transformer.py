@@ -678,7 +678,7 @@ class TransformerBlock(nn.Module):
             x = x + self.self_attn(self.pre_norm(x), mask = mask, rotary_pos_emb = rotary_pos_emb)
 
             if context is not None:
-                print(x.shape, context.shape, context_mask)
+                # print(x.shape, context.shape, context_mask)
                 x = x + self.cross_attn(self.cross_attend_norm(x), context = context, context_mask = context_mask)
 
             # None
