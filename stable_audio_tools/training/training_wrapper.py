@@ -32,7 +32,7 @@ class DiffusionCondTrainingWrapper(pl.LightningModule):
             lr: float = None,
             mask_padding: bool = False,
             mask_padding_dropout: float = 0.0,
-            use_ema: bool = True,
+            use_ema: bool = False,
             log_loss_info: bool = False,
             optimizer_configs: dict = None,
             pre_encoded: bool = False,
@@ -127,24 +127,12 @@ class DiffusionCondTrainingWrapper(pl.LightningModule):
             conditioning = self.diffusion.conditioner(metadata, self.device)
 
 
-
-        # # If mask_padding is on, randomly drop the padding masks to allow for learning silence padding
-        # use_padding_mask = self.mask_padding and random.random() > self.mask_padding_dropout
-
-        # # Create batch tensor of attention masks from the "mask" field of the metadata array
-        # if use_padding_mask:
-        #     padding_masks = torch.stack([md["padding_mask"][0] for md in metadata], dim=0).to(self.device) # Shape (batch_size, sequence_length)
-
-
         if self.diffusion.pretransform is not None:
             self.diffusion.pretransform.to(self.device)
 
             if not self.pre_encoded:
                 with torch.cuda.amp.autocast() and torch.set_grad_enabled(self.diffusion.pretransform.enable_grad):
                     diffusion_input = self.diffusion.pretransform.encode(diffusion_input)
-                    # If mask_padding is on, interpolate the padding masks to the size of the pretransformed input
-                    # if use_padding_mask:
-                    #     padding_masks = F.interpolate(padding_masks.unsqueeze(1).float(), size=diffusion_input.shape[2], mode="nearest").squeeze(1).bool()
             else:            
                 # Apply scale to pre-encoded latents if needed, as the pretransform encode function will not be run
                 if hasattr(self.diffusion.pretransform, "scale") and self.diffusion.pretransform.scale != 1.0:
@@ -227,10 +215,12 @@ class DiffusionCondTrainingWrapper(pl.LightningModule):
         self.log_dict(log_dict, prog_bar=True, on_step=True)
         #print(f"Profiler: {p}")
         return loss
-    
+
+
     def on_before_zero_grad(self, *args, **kwargs):
         if self.diffusion_ema is not None:
             self.diffusion_ema.update()
+
 
     def export_model(self, path, use_safetensors=False):
         if self.diffusion_ema is not None:

@@ -33,7 +33,7 @@ def main():
         'force_channels':"stereo"
     }
     dl_config = {
-        'batch_size':10, 
+        'batch_size':20, 
         'shuffle':True,
         # 'num_workers':1, 
         # 'persistent_workers':True, 
@@ -58,11 +58,14 @@ def main():
                 cfg_dropout_prob = training_config.get("cfg_dropout_prob", 0.1),
                 timestep_sampler = training_config.get("timestep_sampler", "uniform")
             )
+    devices = [0,1,2,3,4,5,6,7] 
+    strategy = 'ddp_find_unused_parameters_true' if len(devices) > 1 else "auto" 
     trainer = pl.Trainer(
-        devices=[0, 1], 
+        devices = devices, 
         accelerator="gpu",
         num_nodes = 1,
-        max_epochs=2,
+        max_epochs=100,
+        strategy = strategy
     )
     trainer.fit(training_wrapper, dataloader)
 

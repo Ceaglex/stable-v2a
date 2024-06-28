@@ -78,7 +78,7 @@
         "io_channels": 64
     },
     "training": {
-        "use_ema": true,
+        "use_ema": false,
         "log_loss_info": false,
         "optimizer_configs": {
             "diffusion": {
