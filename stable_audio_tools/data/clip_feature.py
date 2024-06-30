@@ -16,10 +16,14 @@ from torch.utils.data import Dataset
 class AudioDataset(Dataset):
     def __init__(self,
                  mp4_dir, 
+                 pickle_dir,
                  preprocess,
-                 recalculate = False,
+                 duration = 10,
+                 recalculate = True,
                  fps = 22):
         self.fps = fps
+        self.duration = duration
+        self.pickle_dir = pickle_dir
         self.recalculate = recalculate
         self.mp4_files = glob.glob(os.path.join(mp4_dir, '*.mp4'))    ######
         self.preprocess = preprocess
@@ -30,19 +34,27 @@ class AudioDataset(Dataset):
     def __getitem__(self, idx):
         mp4_file = self.mp4_files[idx]
         try:
-            pickle_file = os.path.join(pickle_dir, os.path.basename(mp4_file)[:-4] + ".pickle")
+            pickle_file = os.path.join(self.pickle_dir, os.path.basename(mp4_file)[:-4] + ".pickle")
 
             if self.recalculate or not os.path.exists(pickle_file):
                 video = VideoFileClip(mp4_file)
+                
                 video = video.set_fps(self.fps)
                 frames = []
                 with torch.no_grad():
                     for idx, frame in enumerate(video.iter_frames()):
+                        if idx > (self.duration+0.5)*self.fps:
+                            print(f"Duration: {video.duration}  Frame Idx:{idx},  {mp4_file} is too long to encode by CLIP! ")
+                            video.duration = (self.duration+0.5)
+                            break
                         frame = Image.fromarray(frame)
                         frame = self.preprocess(frame).unsqueeze(0)
                         frames.append(frame)
+                
                 feature_dict = {'video_path': mp4_file, 'pickle_path':pickle_file, 'fps' : video.fps, 'duration' : video.duration, 'frame_num':len(frames)}
-                frames = torch.cat(frames)   ######
+                frames = torch.cat(frames)  
+
+                # print(f"{feature_dict['duration']}, {frames.shape}, {frames.shape[0]/feature_dict['duration']}")
                 return feature_dict, frames
             
             else:
@@ -61,16 +73,17 @@ class AudioDataset(Dataset):
 
 def main(mp4_dir,
         pickle_dir,
+        duration = 10, 
         frame_size = 20,
         fps = 22, 
         device = 0,
-        recalculate = False):
+        recalculate = True):
     
     accelerator = Accelerator()
     device = accelerator.device
 
-    model, preprocess = clip.load("ViT-L/14", device=device, download_root='../../dataset/CLIP')
-    dataset = AudioDataset(mp4_dir=mp4_dir, preprocess=preprocess, fps = fps, recalculate = recalculate)
+    model, preprocess = clip.load("ViT-L/14", device=device, download_root='../../weight/CLIP')
+    dataset = AudioDataset(mp4_dir=mp4_dir, preprocess=preprocess, duration = duration, pickle_dir=pickle_dir, fps = fps, recalculate = recalculate)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size = 1, shuffle=False)
 
     model, dataloader = accelerator.prepare(model, dataloader)
@@ -114,8 +127,13 @@ def main(mp4_dir,
 
 
 if __name__ == "__main__":
-    mp4_dir = '../../dataset/video/train/AudioSet'
-    pickle_dir = '../../dataset/video_feature/train/AudioSet'
+    train_test = 'train'
+    dataset = 'VGGSound'
+    duration = 10
+    # mp4_dir    = f'../../dataset/video/{train_test}/{dataset}/{duration}'
+    mp4_dir = f'../../../{dataset}/dataset/{train_test}/{duration}'
+    pickle_dir = f'../../dataset/feature/{train_test}/{dataset}/{duration}'
+
     frame_size = 20
-    main(mp4_dir = mp4_dir, pickle_dir = pickle_dir, frame_size = frame_size)
+    main(mp4_dir = mp4_dir, pickle_dir = pickle_dir, duration = duration, frame_size = frame_size)
 

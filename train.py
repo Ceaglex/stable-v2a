@@ -23,8 +23,10 @@ def main():
 
 
 
-    info_dirs = ['./dataset/feature/train/AudioSet/10']
-    audio_dirs = ['/home/chengxin/chengxin/AudioSet/generated_audios/train/10']
+    # info_dirs = ['./dataset/feature/train/AudioSet/10']
+    # audio_dirs = ['/home/chengxin/chengxin/AudioSet/generated_audios/train/10']
+    info_dirs = ['./dataset/feature/train/AudioSet/10', './dataset/feature/train/VGGSound/10']
+    audio_dirs = ['/home/chengxin/chengxin/AudioSet/generated_audios/train/10', '/home/chengxin/chengxin/VGGSound/generated_audios/train/10']
     ds_config = {
         'info_dirs' : info_dirs,
         'audio_dirs' : audio_dirs,
