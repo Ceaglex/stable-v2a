@@ -1,8 +1,7 @@
 import json
 import pytorch_lightning as pl
 from einops import rearrange
-import torch
-import torchaudio
+from collections import OrderedDict
 from torch.utils.data import DataLoader
 from safetensors.torch import load_file
 
@@ -18,9 +17,11 @@ def main():
     model_config_file = './stable_audio_tools/configs/model_config.json'
     with open(model_config_file) as f:
         model_config = json.load(f)
+        sample_rate = model_config["sample_rate"]
+    # state_dict = torch.load('./lightning_logs/version_2/checkpoints/epoch=9-step=12800.ckpt')['state_dict']
+    # state_dict = OrderedDict([(".".join(key.split('.')[1:]), value)  for key, value in state_dict.items()])
     model = create_model_from_config(model_config)
-    model.load_state_dict(load_file('./weight/StableAudio/model.safetensors'), strict=False)
-
+    model.load_state_dict(load_file('./weight/StableAudio/lightning_logs/version_2/checkpoints/epoch=9-step=12800.safetensors'), strict=True)
 
 
     info_dirs = ['./dataset/feature/train/AudioSet/10', './dataset/feature/train/VGGSound/10']
@@ -28,8 +29,8 @@ def main():
     ds_config = {
         'info_dirs' : info_dirs,
         'audio_dirs' : audio_dirs,
+        'sample_rate':sample_rate, 
         'exts':'wav',
-        'sample_rate':44100, 
         'force_channels':"stereo"
     }
     dl_config = {
@@ -42,12 +43,11 @@ def main():
     }
     dataset = VideoFeatDataset(**ds_config)
     dataloader = DataLoader(dataset=dataset,  collate_fn=collation_fn, **dl_config)
-    print("Audio Files number: ",len(dataset))
 
 
     training_config = model_config.get('training', None)
     training_wrapper = DiffusionCondTrainingWrapper(
-                model, 
+                model=model, 
                 lr=training_config.get("learning_rate", None),
                 mask_padding=training_config.get("mask_padding", False),
                 mask_padding_dropout=training_config.get("mask_padding_dropout", 0.0),
@@ -58,7 +58,6 @@ def main():
                 cfg_dropout_prob = training_config.get("cfg_dropout_prob", 0.1),
                 timestep_sampler = training_config.get("timestep_sampler", "uniform")
             )
-    training_wrapper.load_state_dict(torch.load('./lightning_logs/version_0/checkpoints/epoch=99-step=13800.ckpt')['state_dict'], strict=True)
     devices = [0,1,2,3,4,5,6,7] 
     strategy = 'ddp_find_unused_parameters_true' if len(devices) > 1 else "auto" 
     trainer = pl.Trainer(
@@ -66,9 +65,11 @@ def main():
         accelerator="gpu",
         num_nodes = 1,
         max_epochs=10,
-        strategy = strategy
+        strategy = strategy,
+        default_root_dir = "./weight/StableAudio"
     )
     trainer.fit(training_wrapper, dataloader)
+
 
 if __name__ == '__main__':
     main()
