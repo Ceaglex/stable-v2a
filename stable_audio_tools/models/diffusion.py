@@ -139,18 +139,15 @@ class ConditionedDiffusionModelWrapper(nn.Module):
         # Concatenate all cross-attention inputs over the sequence dimension
         # Assumes that the cross-attention inputs are of shape (batch, seq, channels)
         if len(self.cross_attn_cond_ids) > 0:
-
             cross_attention_input = []
             cross_attention_masks = []
 
             for key in self.cross_attn_cond_ids:
                 cross_attn_in, cross_attn_mask = conditioning_tensors[key]
-
                 # Add sequence dimension if it's not there
                 if len(cross_attn_in.shape) == 2:
                     cross_attn_in = cross_attn_in.unsqueeze(1)
                     cross_attn_mask = cross_attn_mask.unsqueeze(1)
-
                 cross_attention_input.append(cross_attn_in)
                 cross_attention_masks.append(cross_attn_mask)
 
@@ -161,16 +158,8 @@ class ConditionedDiffusionModelWrapper(nn.Module):
         # Concatenate all global conditioning inputs over the channel dimension
         # Assumes that the global conditioning inputs are of shape (batch, channels)
         if len(self.global_cond_ids) > 0:
-
-            global_conds = []
-            for key in self.global_cond_ids:
-                global_cond_input = conditioning_tensors[key][0]
-
-                global_conds.append(global_cond_input)
-
             # Concatenate over the channel dimension
-            global_cond = torch.cat(global_conds, dim=-1)
-
+            global_cond = torch.cat([conditioning_tensors[key][0] for key in self.global_cond_ids], dim=-1)
             if len(global_cond.shape) == 3:
                 global_cond = global_cond.squeeze(1)
 
@@ -178,23 +167,15 @@ class ConditionedDiffusionModelWrapper(nn.Module):
         # Concatenate all input concat conditioning inputs over the channel dimension
         # Assumes that the input concat conditioning inputs are of shape (batch, channels, seq)
         if len(self.input_concat_ids) > 0:
+            # Concatenate over the channel dimension
             input_concat_cond = torch.cat([conditioning_tensors[key][0] for key in self.input_concat_ids], dim=1)
 
 
         # Concatenate all prepend conditioning inputs over the sequence dimension
         # Assumes that the prepend conditioning inputs are of shape (batch, seq, channels)
         if len(self.prepend_cond_ids) > 0:
-
-            prepend_conds = []
-            prepend_cond_masks = []
-
-            for key in self.prepend_cond_ids:
-                prepend_cond_input, prepend_cond_mask = conditioning_tensors[key]
-                prepend_conds.append(prepend_cond_input)
-                prepend_cond_masks.append(prepend_cond_mask)
-
-            prepend_cond = torch.cat(prepend_conds, dim=1)
-            prepend_cond_mask = torch.cat(prepend_cond_masks, dim=1)
+            prepend_cond = torch.cat([conditioning_tensors[key][0] for key in self.prepend_cond_ids], dim=1)
+            prepend_cond_mask = torch.cat([conditioning_tensors[key][1] for key in self.prepend_cond_ids], dim=1)
 
 
         if negative:

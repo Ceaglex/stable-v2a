@@ -1,4 +1,5 @@
 from moviepy.editor import VideoFileClip
+from PIL import Image
 import glob
 import os
 import torch
@@ -82,46 +83,47 @@ def main(mp4_dir,
     accelerator = Accelerator()
     device = accelerator.device
 
-    model, preprocess = clip.load("ViT-L/14", device=device, download_root='../../weight/CLIP')
-    dataset = AudioDataset(mp4_dir=mp4_dir, preprocess=preprocess, duration = duration, pickle_dir=pickle_dir, fps = fps, recalculate = recalculate)
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size = 1, shuffle=False)
+    with torch.no_grad():
+        model, preprocess = clip.load("ViT-L/14", device=device, download_root='../../weight/CLIP')
+        dataset = AudioDataset(mp4_dir=mp4_dir, preprocess=preprocess, duration = duration, pickle_dir=pickle_dir, fps = fps, recalculate = recalculate)
+        dataloader = torch.utils.data.DataLoader(dataset, batch_size = 1, shuffle=False)
 
-    model, dataloader = accelerator.prepare(model, dataloader)
-    print(len(dataloader))
-    if isinstance(model, torch.nn.parallel.DistributedDataParallel):
-        model = model.module
-    
-    for feature_dict, frames in tqdm(dataloader, desc = f'GPU {device}'):
-        # dataloader frames [bs, frame_num, 3, 224, 224]
-        # feature_dict[key] = [value]
-
-        try:
-            if len(feature_dict) == 0:
-                continue
-
-            for key, value in feature_dict.items():
-                feature_dict[key] = float(value[0]) if isinstance(value[0], torch.Tensor) else value[0]
-
-            frames = frames.squeeze(0).to(device)
-            image_features = []
-            for i in range(len(frames)//frame_size + 1):
-                start_id = i*frame_size
-                end_id = (i+1)*frame_size
-                if start_id >= len(frames):
-                    break
-                image_features.append(model.encode_image(frames[start_id:end_id]))
-            
-
-            image_features = torch.concat(image_features)
-            feature_dict['feature'] = image_features
-
-            with open(feature_dict['pickle_path'], 'wb') as handle:
-                pickle.dump(feature_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        model, dataloader = accelerator.prepare(model, dataloader)
+        print(len(dataloader))
+        if isinstance(model, torch.nn.parallel.DistributedDataParallel):
+            model = model.module
         
-        except Exception as e:
-            print("Extracting feature fails because of error : ", e)
-            with open('log.txt', 'a') as file:
-                file.write(f"FILE:{feature_dict['video_path']}\n REASON:{e}\n\n")
+        for feature_dict, frames in tqdm(dataloader, desc = f'GPU {device}'):
+            # dataloader frames [bs, frame_num, 3, 224, 224]
+            # feature_dict[key] = [value]
+
+            try:
+                if len(feature_dict) == 0:
+                    continue
+
+                for key, value in feature_dict.items():
+                    feature_dict[key] = float(value[0]) if isinstance(value[0], torch.Tensor) else value[0]
+
+                frames = frames.squeeze(0).to(device)
+                image_features = []
+                for i in range(len(frames)//frame_size + 1):
+                    start_id = i*frame_size
+                    end_id = (i+1)*frame_size
+                    if start_id >= len(frames):
+                        break
+                    image_features.append(model.encode_image(frames[start_id:end_id]))
+                
+
+                image_features = torch.concat(image_features)
+                feature_dict['feature'] = image_features
+
+                with open(feature_dict['pickle_path'], 'wb') as handle:
+                    pickle.dump(feature_dict, handle, protocol=pickle.HIGHEST_PROTOCOL)
+            
+            except Exception as e:
+                print("Extracting feature fails because of error : ", e)
+                with open('log.txt', 'a') as file:
+                    file.write(f"FILE:{feature_dict['video_path']}\n REASON:{e}\n\n")
                         
 
 

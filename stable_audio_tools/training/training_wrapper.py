@@ -119,12 +119,10 @@ class DiffusionCondTrainingWrapper(pl.LightningModule):
         reals, metadata = batch
         loss_info = {}
 
-        '''[batchsize, latent_dim = 64, seq]'''
-        diffusion_input = reals  
+        diffusion_input = reals  # [batchsize, hidden_dim(VAE), seq]
 
         with torch.cuda.amp.autocast():
-            ''' dict{"condition_name":(condition,  mask)}   ([batchsize, seq, output_dim], [batchsize, seq]) '''
-            conditioning = self.diffusion.conditioner(metadata, self.device)
+            conditioning = self.diffusion.conditioner(metadata, self.device) # dict{"condition_name":(condition,  mask)}   ([batchsize, seq, output_dim], [batchsize, seq]) 
 
 
         if self.diffusion.pretransform is not None:
@@ -140,8 +138,7 @@ class DiffusionCondTrainingWrapper(pl.LightningModule):
 
         if self.timestep_sampler == "uniform":   
             # Draw uniformly distributed continuous timesteps
-            ''' [batchsize] '''
-            t = self.rng.draw(reals.shape[0])[:, 0].to(self.device) 
+            t = self.rng.draw(reals.shape[0])[:, 0].to(self.device) # [batchsize]
         elif self.timestep_sampler == "logit_normal":
             t = torch.sigmoid(torch.randn(reals.shape[0], device=self.device))
             

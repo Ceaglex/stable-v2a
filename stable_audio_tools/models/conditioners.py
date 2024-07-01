@@ -6,6 +6,11 @@ import typing as tp
 from .adp import NumberEmbedder
 
 from torch import nn
+import clip
+from moviepy.editor import VideoFileClip
+from PIL import Image
+import torch.nn.functional as F
+
 
 class Conditioner(nn.Module):
     def __init__(
@@ -57,19 +62,71 @@ class NumberConditioner(Conditioner):
 
 class CLIPFeatConditioner(Conditioner):
     def __init__(self,
+                 fps :int = 22,
+                 clip_name :str = None,
+                 download_root :str = None,
                  **kargs):
         '''
             Get the video feature from restored feature or videos
         '''
         super().__init__()
+        self.fps = fps
+        self.clip_name = clip_name
+        self.download_root = download_root
+        # self.clip_model = None
+        # self.preprocess = None
 
     def forward(self, data, device=None) -> tp.Any:
         if isinstance(data[0], str):
-            pass
+            with torch.no_grad():
+                # if self.clip_model == None:
+                clip_model,  preprocess = clip.load(self.clip_name, device=device, download_root=self.download_root)
+                # elif next(self.clip_model.parameters()).device.index != device:
+                clip_model.to(device)
+
+                images_features = []
+                for mp4_file in data:
+                    video = VideoFileClip(mp4_file)
+                    video = video.set_fps(self.fps)
+                    print(f"Extracting features from video:{mp4_file}")
+
+                    frames = []
+                    image_features = []
+                    for idx, frame in enumerate(video.iter_frames()):
+                        frame = Image.fromarray(frame)
+                        frame = preprocess(frame).unsqueeze(0)
+                        frames.append(frame)
+
+                        # do it in batch to avoid OOM
+                        if idx % 240 == 239  or  idx == int(video.duration*video.fps)-1:
+                            frames = torch.cat(frames).to(device)
+                            frame_batchsize = 20
+                            for i in range(len(frames)//frame_batchsize + 1):
+                                start_id = i*frame_batchsize
+                                end_id = (i+1)*frame_batchsize
+                                if start_id >= len(frames):
+                                    break
+                                image_features.append(clip_model.encode_image(frames[start_id:end_id]))
+                            # del frames
+                            # torch.cuda.empty_cache()
+                            frames = []
+
+                    image_features = torch.concat(image_features).to(device)
+                    images_features.append(image_features)                    
+
+                max_length = max([image_features.shape[0] for image_features in images_features])
+                images_features = torch.stack([
+                    F.pad(image_features, (0, 0, 0, max_length - image_features.shape[0]), mode='constant', value=0) 
+                    for image_features in images_features
+                ])
+
+                return [images_features.to(device),               torch.ones(images_features.shape[0], images_features.shape[1]).to(device)]
+        
         elif isinstance(data[0], torch.Tensor):
             # TODO: attention MASK ?????
-            # [batchsize, frame_num, output_dim]
-            return [data.to(device), torch.ones(data.shape[0], data.shape[1]).to(device)]  
+            # [batchsize, frame_num, output_dim]   [batchsize, frame_num]
+            return [data.to(device),               torch.ones(data.shape[0], data.shape[1]).to(device)]  
+        
         else:
             raise ValueError("data type for CLIPConditioner can only be str(directory path) or tensor(restored feature)")
 
@@ -80,7 +137,8 @@ class MultiConditioner(nn.Module):
 
     Args:
         conditioners: a dictionary of conditioners with keys corresponding to the keys of the conditioning input dictionary (e.g. "prompt")
-        default_keys: a dictionary of default keys to use if the key is not in the input dictionary (e.g. {"prompt_t5": "prompt"})
+        default_keys: a dictionary of default keys to use if the key is emmpty 
+                      (e.g. {"feature": "video_path"}, When the dict['feature'] is empty, use dict['video_path'] as the input to the conditioner)
     """
     def __init__(self, 
                  conditioners: tp.Dict[str, Conditioner], 
@@ -95,12 +153,13 @@ class MultiConditioner(nn.Module):
         output = {}
         for key, conditioner in self.conditioners.items():
             if key in batch_metadata and len(batch_metadata[key]) != 0:
-                pass
+                output[key] = conditioner(batch_metadata[key], device)
             elif key in self.default_keys:
-                key = self.default_keys[key]
+                key_ = self.default_keys[key]
+                output[key] = conditioner(batch_metadata[key_], device)
             else:
                 continue
-            output[key] = conditioner(batch_metadata[key], device)
+            
         
         if len(output) == 0:
             print("No conditioned is specified !!")

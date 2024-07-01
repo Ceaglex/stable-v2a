@@ -54,7 +54,9 @@
                     "id": "feature",
                     "type": "video_feature",
                     "config": {                    
-
+                        "clip_name" : "ViT-L/14",
+                        "download_root" : "./weight/CLIP",
+                        "fps":22
                     }
                 }
             ],
