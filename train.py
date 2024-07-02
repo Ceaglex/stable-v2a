@@ -56,11 +56,7 @@ def main():
     training_config = model_config.get('training', None)
     training_wrapper = DiffusionCondTrainingWrapper(
                 model=model, 
-                lr=training_config.get("learning_rate", 1e-6),
-                mask_padding=training_config.get("mask_padding", False),
-                mask_padding_dropout=training_config.get("mask_padding_dropout", 0.0),
-                use_ema = training_config.get("use_ema", True),
-                log_loss_info=training_config.get("log_loss_info", False),
+                lr=training_config.get("learning_rate", None),
                 optimizer_configs=training_config.get("optimizer_configs", None),
                 pre_encoded=training_config.get("pre_encoded", False),
                 cfg_dropout_prob = training_config.get("cfg_dropout_prob", 0.1),
@@ -71,7 +67,7 @@ def main():
     devices = [0,1,2,3,4,5,6,7] 
     run_name = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     wandb_logger = pl.loggers.WandbLogger(project="stable-v2a", name = run_name, save_dir="./weight/StableAudio")
-    ckpt_callback = pl.callbacks.ModelCheckpoint(every_n_train_steps=50, dirpath=f'./weight/StableAudio/{run_name}', filename = 'epoch{epoch}-step{step}', save_top_k=-1)
+    ckpt_callback = pl.callbacks.ModelCheckpoint(every_n_train_steps=500, dirpath=f'./weight/StableAudio/{run_name}', filename = '{epoch}-{step}', save_top_k=-1)
     
     strategy = 'ddp_find_unused_parameters_true' if len(devices) > 1 else "auto" 
     trainer = pl.Trainer(

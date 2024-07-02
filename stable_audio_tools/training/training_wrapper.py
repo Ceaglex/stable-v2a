@@ -30,10 +30,6 @@ class DiffusionCondTrainingWrapper(pl.LightningModule):
             self,
             model: ConditionedDiffusionModelWrapper,
             lr: float = None,
-            mask_padding: bool = False,
-            mask_padding_dropout: float = 0.0,
-            use_ema: bool = False,
-            log_loss_info: bool = False,
             optimizer_configs: dict = None,
             pre_encoded: bool = False,
             cfg_dropout_prob = 0.1,
@@ -42,21 +38,6 @@ class DiffusionCondTrainingWrapper(pl.LightningModule):
         super().__init__()
 
         self.diffusion = model
-
-        if use_ema:
-            self.diffusion_ema = EMA(
-                self.diffusion.model,
-                beta=0.9999,
-                power=3/4,
-                update_every=1,
-                update_after_step=1,
-                include_online_model=False
-            )
-        else:
-            self.diffusion_ema = None
-
-        self.mask_padding = mask_padding
-        self.mask_padding_dropout = mask_padding_dropout
 
         self.cfg_dropout_prob = cfg_dropout_prob
 
@@ -70,7 +51,7 @@ class DiffusionCondTrainingWrapper(pl.LightningModule):
             MSELoss("output", 
                    "targets", 
                    weight=1.0, 
-                   mask_key="padding_mask" if self.mask_padding else None, 
+                   mask_key=None, 
                    name="mse_loss"
             )
         ]
@@ -78,8 +59,8 @@ class DiffusionCondTrainingWrapper(pl.LightningModule):
         self.losses = MultiLoss(self.loss_modules)
 
         self.train_epoch_losses_info = []
-
-        self.log_loss_info = log_loss_info
+        
+        self.test_epoch_losses_info = []
 
         assert lr is not None or optimizer_configs is not None, "Must specify either lr or optimizer_configs in training config"
 
@@ -209,9 +190,6 @@ class DiffusionCondTrainingWrapper(pl.LightningModule):
         pass
 
     def export_model(self, path, use_safetensors=True):
-        if self.diffusion_ema is not None:
-            self.diffusion.model = self.diffusion_ema.ema_model
-        
         if use_safetensors:
             save_file(self.diffusion.state_dict(), path)
         else:
