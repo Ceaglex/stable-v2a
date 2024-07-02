@@ -77,6 +77,8 @@ class DiffusionCondTrainingWrapper(pl.LightningModule):
 
         self.losses = MultiLoss(self.loss_modules)
 
+        self.train_epoch_losses_info = []
+
         self.log_loss_info = log_loss_info
 
         assert lr is not None or optimizer_configs is not None, "Must specify either lr or optimizer_configs in training config"
@@ -164,62 +166,49 @@ class DiffusionCondTrainingWrapper(pl.LightningModule):
 
 
         extra_args = {}
-        # if use_padding_mask:
-        #     extra_args["mask"] = padding_masks
-
         with torch.cuda.amp.autocast():
             output = self.diffusion(noised_inputs, t, cond=conditioning, cfg_dropout_prob = self.cfg_dropout_prob, **extra_args)
-
             loss_info.update({
                 "output": output,
                 "targets": targets,
-                # "padding_mask": padding_masks if use_padding_mask else None,
+                "padding_mask":  None,
             })
-
             loss, losses = self.losses(loss_info)
-
-            if self.log_loss_info:
-                # Loss debugging logs
-                num_loss_buckets = 10
-                bucket_size = 1 / num_loss_buckets
-                loss_all = F.mse_loss(output, targets, reduction="none")
-
-                sigmas = rearrange(self.all_gather(sigmas), "w b c n -> (w b) c n").squeeze()
-
-                # gather loss_all across all GPUs
-                loss_all = rearrange(self.all_gather(loss_all), "w b c n -> (w b) c n")
-
-                # Bucket loss values based on corresponding sigma values, bucketing sigma values by bucket_size
-                loss_all = torch.stack([loss_all[(sigmas >= i) & (sigmas < i + bucket_size)].mean() for i in torch.arange(0, 1, bucket_size).to(self.device)])
-
-                # Log bucketed losses with corresponding sigma bucket values, if it's not NaN
-                debug_log_dict = {
-                    f"model/loss_all_{i/num_loss_buckets:.1f}": loss_all[i].detach() for i in range(num_loss_buckets) if not torch.isnan(loss_all[i])
-                }
-
-                self.log_dict(debug_log_dict)
 
 
         log_dict = {
-            'train/loss': loss.detach(),
-            'train/std_data': diffusion_input.std(),
-            'train/lr': self.trainer.optimizers[0].param_groups[0]['lr']
+            'step': batch_idx,
+            'train_step/loss': loss.detach(),
+            'train_step/lr': self.trainer.optimizers[0].param_groups[0]['lr']
+            # 'train/std_data': diffusion_input.std(),
         }
-
         for loss_name, loss_value in losses.items():
             log_dict[f"train/{loss_name}"] = loss_value.detach()
-
-        self.log_dict(log_dict, prog_bar=True, on_step=True)
-        #print(f"Profiler: {p}")
+        self.train_epoch_losses_info.append(log_dict)
+        self.log_dict(log_dict)
+        
         return loss
 
+    def on_train_epoch_end(self):
+        train_epoch_losses_info = self.all_gather(self.train_epoch_losses_info)
+        train_epoch_loss = torch.stack([loss['train_step/loss'] for loss in train_epoch_losses_info])
+        train_epoch_lr = torch.stack([loss['train_step/lr'] for loss in train_epoch_losses_info])
 
-    def on_before_zero_grad(self, *args, **kwargs):
-        if self.diffusion_ema is not None:
-            self.diffusion_ema.update()
+        log_dict = {
+            'epoch': self.current_epoch,
+            'train_epoch/loss':train_epoch_loss.mean(),
+            'train_epoch/lr':train_epoch_lr.mean()
+            }
+        self.log_dict(log_dict)
+        self.epoch_losses_info = []
 
 
-    def export_model(self, path, use_safetensors=False):
+    def test_step(self, batch, batch_idx):
+        pass
+    def on_test_epoch_end(self):
+        pass
+
+    def export_model(self, path, use_safetensors=True):
         if self.diffusion_ema is not None:
             self.diffusion.model = self.diffusion_ema.ema_model
         
