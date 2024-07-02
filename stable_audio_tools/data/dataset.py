@@ -131,7 +131,7 @@ class VideoFeatDataset(torch.utils.data.Dataset):
             ext = f".{exts[i]}"
 
     
-            for pickle_path in glob.glob(os.path.join(info_dir, "*.pickle"))[:500]:  #########
+            for pickle_path in glob.glob(os.path.join(info_dir, "*.pickle")):  #########
                 audio_name = os.path.basename(pickle_path).replace('.pickle', ext)
                 audio_path = os.path.join(audio_dir, audio_name)
                 if not os.path.exists(audio_path):
