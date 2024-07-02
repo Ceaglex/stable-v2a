@@ -1,4 +1,4 @@
-# 6.30
+# Stable-V2A
 ![alt text](DiT.png)
 ## TODO
 - [DONE] Add function: generate audio from video without pre-extracted CLIP features.
