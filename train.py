@@ -21,7 +21,7 @@ def main():
     # state_dict = torch.load('./lightning_logs/version_2/checkpoints/epoch=9-step=12800.ckpt')['state_dict']
     # state_dict = OrderedDict([(".".join(key.split('.')[1:]), value)  for key, value in state_dict.items()])
     model = create_model_from_config(model_config)
-    model.load_state_dict(load_file('./weight/StableAudio/lightning_logs/version_2/checkpoints/epoch=9-step=12800.safetensors'), strict=True)
+    model.load_state_dict(load_file('./weight/StableAudio/lightning_logs/version_3/checkpoints/epoch=9-step=14620.safetensors'), strict=True)
 
 
     info_dirs = ['./dataset/feature/train/AudioSet/10', './dataset/feature/train/VGGSound/10']
@@ -34,7 +34,7 @@ def main():
         'force_channels':"stereo"
     }
     dl_config = {
-        'batch_size':20, 
+        'batch_size':25, 
         'shuffle':True,
         # 'num_workers':1, 
         # 'persistent_workers':True, 
@@ -58,13 +58,13 @@ def main():
                 cfg_dropout_prob = training_config.get("cfg_dropout_prob", 0.1),
                 timestep_sampler = training_config.get("timestep_sampler", "uniform")
             )
-    devices = [1,2,3,4,5,6,7] 
+    devices = [3,4,5,6,7] 
     strategy = 'ddp_find_unused_parameters_true' if len(devices) > 1 else "auto" 
     trainer = pl.Trainer(
         devices = devices, 
         accelerator="gpu",
         num_nodes = 1,
-        max_epochs=10,
+        max_epochs=20,
         strategy = strategy,
         default_root_dir = "./weight/StableAudio"
     )
