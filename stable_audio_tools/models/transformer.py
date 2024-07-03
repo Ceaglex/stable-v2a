@@ -1,5 +1,6 @@
 from functools import reduce, partial
 from packaging import version
+import math
 
 from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
@@ -10,25 +11,63 @@ from torch.cuda.amp import autocast
 from typing import Callable, Literal
 
 try:
-    from flash_attn import flash_attn_func, flash_attn_kvpacked_func
+    from flash_attn import flash_attn_func, flash_attn_kvpacked_func, DISABLE
 except ImportError as e:
     print(e)
     print('flash_attn not installed, disabling Flash Attention')
     flash_attn_kvpacked_func = None
     flash_attn_func = None
 
-try:
-    import natten
-except ImportError:
-    natten = None
 
-def checkpoint(function, *args, **kwargs):
-    kwargs.setdefault("use_reentrant", False)
-    return torch.utils.checkpoint.checkpoint(function, *args, **kwargs)
+def create_aligned_attn_bias(L, S, attn_bind_width=11):
+    bind_interval = S/L
+    attn_weight = torch.cat([torch.linspace(0, 1, attn_bind_width), torch.linspace(1, 0, attn_bind_width)])
+    attn_bias = torch.zeros(L,S)
+
+    for i in range(L):
+        mid = round(i*bind_interval)
+        if mid <= attn_bind_width:
+            attn_bias[i][: mid+attn_bind_width] = attn_weight[attn_bind_width-mid:]
+        elif mid+attn_bind_width > S:
+            attn_bias[i][mid-attn_bind_width: ] = attn_weight[: S-mid+attn_bind_width]
+        else:
+            attn_bias[i][mid-attn_bind_width:mid+attn_bind_width] = attn_weight
+
+    return attn_bias
+
+
+def scaled_dot_product_attention(query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None,
+                                 custom_attn_bias_weight=0) -> torch.Tensor:
+    L, S = query.size(-2), key.size(-2)
+    scale_factor = 1 / math.sqrt(query.size(-1)) if scale is None else scale
+    attn_bias = torch.zeros(L, S, dtype=query.dtype).to(query.device)
+    if is_causal:
+        assert attn_mask is None
+        temp_mask = torch.ones(L, S, dtype=torch.bool).tril(diagonal=0)
+        attn_bias.masked_fill_(temp_mask.logical_not(), float("-inf"))
+        attn_bias.to(query.dtype)
+
+    if attn_mask is not None:
+        if attn_mask.dtype == torch.bool:
+            attn_bias.masked_fill_(attn_mask.logical_not(), float("-inf"))
+        else:
+            attn_bias += attn_mask
+    attn_weight = query @ key.transpose(-2, -1) * scale_factor
+    attn_weight = torch.add(attn_weight, attn_bias)
+    attn_weight = torch.softmax(attn_weight, dim=-1)
+
+    if custom_attn_bias_weight:
+        attn_bias = create_aligned_attn_bias(L, S).to(query.dtype).to(query.device)
+        attn_weight = torch.add(attn_weight, (attn_bias * custom_attn_bias_weight))
+        attn_weight = torch.softmax(attn_weight, dim=-1)
+
+    attn_weight = torch.dropout(attn_weight, dropout_p, train=True)
+    return attn_weight @ value
+
+
 
 # Copied and modified from https://github.com/lucidrains/x-transformers/blob/main/x_transformers/attend.py under MIT License
 # License can be found in LICENSES/LICENSE_XTRANSFORMERS.txt
-
 def create_causal_mask(i, j, device):
     return torch.ones((i, j), device = device, dtype = torch.bool).triu(j - i + 1)
 
@@ -39,7 +78,6 @@ def or_reduce(masks):
     return head
 
 # positional embeddings
-
 class AbsolutePositionalEmbedding(nn.Module):
     def __init__(self, dim, max_seq_len):
         super().__init__()
@@ -191,7 +229,6 @@ class LayerNorm(nn.Module):
         return F.layer_norm(x, x.shape[-1:], weight=self.gamma, bias=self.beta)
 
 # feedforward
-
 class GLU(nn.Module):
     def __init__(
         self,
@@ -276,7 +313,7 @@ class Attention(nn.Module):
         causal = False,
         zero_init_output=True,
         qk_norm = False,
-        natten_kernel_size = None
+        custom_attn_bias_weight = 0,
     ):
         super().__init__()
         self.dim = dim
@@ -301,11 +338,6 @@ class Attention(nn.Module):
 
         self.qk_norm = qk_norm
 
-        # Using 1d neighborhood attention
-        self.natten_kernel_size = natten_kernel_size
-        if natten_kernel_size is not None:
-            return
-
         self.use_pt_flash = torch.cuda.is_available() and version.parse(torch.__version__) >= version.parse('2.0.0')
 
         self.use_fa_flash = torch.cuda.is_available() and flash_attn_func is not None
@@ -316,12 +348,17 @@ class Attention(nn.Module):
             enable_mem_efficient = True
         )
 
+        
+        self.custom_attn_bias_weight = torch.nn.Parameter(torch.tensor(float(custom_attn_bias_weight))) if custom_attn_bias_weight else 0
+
+
+
     def flash_attn(
             self,
             q, 
             k, 
             v,
-            mask = None,
+            mask = None, 
             causal = None
     ):
         batch, heads, q_len, _, k_len, device = *q.shape, k.shape[-2], q.device
@@ -340,12 +377,11 @@ class Attention(nn.Module):
         if v.ndim == 3:
             v = rearrange(v, 'b ... -> b 1 ...').expand_as(q)
 
-        causal = self.causal if causal is None else causal
-
+        causal = self.causal if causal is None else causal # FALSE
         if q_len == 1 and causal:
             causal = False
         
-        if mask is not None:
+        if mask is not None: # NONE
             assert mask.ndim == 4
             mask = mask.expand(batch, heads, q_len, k_len)
 
@@ -360,9 +396,7 @@ class Attention(nn.Module):
             causal = False
 
         # manually handle causal mask, if another mask was given
-
-        row_is_entirely_masked = None
-
+        row_is_entirely_masked = None  # NONE
         if mask is not None and causal:
             causal_mask = self.create_causal_mask(q_len, k_len, device = device)
             mask = mask & ~causal_mask
@@ -374,15 +408,16 @@ class Attention(nn.Module):
 
             causal = False
         
+
         with torch.backends.cuda.sdp_kernel(**self.sdp_kwargs):
-            out = F.scaled_dot_product_attention(
+            out = scaled_dot_product_attention(
                 q, k, v,
                 attn_mask = mask,
-                is_causal = causal
+                is_causal = causal,
+                custom_attn_bias_weight=self.custom_attn_bias_weight,
             )
 
         # for a row that is entirely masked out, should zero out the output of that row token
-
         if row_is_entirely_masked is not None:
             out = out.masked_fill(row_is_entirely_masked[..., None], 0.)
 
@@ -460,24 +495,9 @@ class Attention(nn.Module):
         if n == 1 and causal:
             causal = False
 
-        if self.natten_kernel_size is not None:
-            if natten is None:
-                raise ImportError('natten not installed, please install natten to use neighborhood attention')
-            
-            dtype_in = q.dtype
-            q, k, v = map(lambda t: t.to(torch.float32), (q, k, v))
-
-            attn = natten.functional.natten1dqk(q, k, kernel_size = self.natten_kernel_size, dilation=1)
-
-            if final_attn_mask is not None:
-                attn = attn.masked_fill(final_attn_mask, -torch.finfo(attn.dtype).max)
-
-            attn = F.softmax(attn, dim=-1, dtype=torch.float32)
-
-            out = natten.functional.natten1dav(attn, v, kernel_size = self.natten_kernel_size, dilation=1).to(dtype_in)
 
         # Prioritize Flash Attention 2
-        elif self.use_fa_flash:
+        if self.use_fa_flash:
             assert final_attn_mask is None, 'masking not yet supported for Flash Attention 2'
             # Flash Attention 2 requires FP16 inputs
             fa_dtype_in = q.dtype
@@ -492,44 +512,11 @@ class Attention(nn.Module):
             out = self.flash_attn(q, k, v, causal = causal, mask = final_attn_mask)
 
         else:
-            # Fall back to custom implementation
+            raise "No implementation of Attention!!!"
 
-            if h != kv_h:
-                # Repeat interleave kv_heads to match q_heads
-                heads_per_kv_head = h // kv_h
-                k, v = map(lambda t: t.repeat_interleave(heads_per_kv_head, dim = 1), (k, v))
-
-            scale = 1. / (q.shape[-1] ** 0.5)
-
-            kv_einsum_eq = 'b j d' if k.ndim == 3 else 'b h j d'
-
-            dots = einsum(f'b h i d, {kv_einsum_eq} -> b h i j', q, k) * scale
-            
-            i, j, dtype = *dots.shape[-2:], dots.dtype
-
-            mask_value = -torch.finfo(dots.dtype).max
-
-            if final_attn_mask is not None:
-                dots = dots.masked_fill(~final_attn_mask, mask_value)
-
-            if causal:
-                causal_mask = self.create_causal_mask(i, j, device = device)
-                dots = dots.masked_fill(causal_mask, mask_value)
-
-            attn = F.softmax(dots, dim=-1, dtype=torch.float32)
-            attn = attn.type(dtype)
-
-            out = einsum(f'b h i j, {kv_einsum_eq} -> b h i d', attn, v)
 
         # merge heads
         out = rearrange(out, ' b h n d -> b n (h d)')
-
-        # Communicate between heads
-        
-        # with autocast(enabled = False):
-        #     out_dtype = out.dtype
-        #     out = out.to(torch.float32)
-        #     out = self.to_out(out).to(out_dtype)
         out = self.to_out(out)
 
         if mask is not None:
@@ -587,6 +574,7 @@ class TransformerBlock(nn.Module):
             conformer = False,
             layer_ix = -1,
             remove_norms = False,
+            custom_attn_bias_weight=0,
             attn_kwargs = {},
             ff_kwargs = {},
             norm_kwargs = {}
@@ -606,6 +594,7 @@ class TransformerBlock(nn.Module):
             dim_heads = dim_heads,
             causal = causal,
             zero_init_output=zero_init_branch_outputs,
+            custom_attn_bias_weight = 0,
             **attn_kwargs
         )
 
@@ -617,6 +606,7 @@ class TransformerBlock(nn.Module):
                 dim_context=dim_context,
                 causal = causal,
                 zero_init_output=zero_init_branch_outputs,
+                custom_attn_bias_weight=custom_attn_bias_weight,
                 **attn_kwargs
             )
         
@@ -745,6 +735,7 @@ class ContinuousTransformer(nn.Module):
                     causal = causal,
                     zero_init_branch_outputs = zero_init_branch_outputs,
                     conformer=conformer,
+                    custom_attn_bias_weight=i/(depth*2),
                     layer_ix=i,
                     **kwargs
                 )
@@ -793,9 +784,7 @@ class ContinuousTransformer(nn.Module):
 
         # Iterate over the transformer layers
         for layer in self.layers:
-            # global_cond = None
             x = layer(x, rotary_pos_emb = rotary_pos_emb, global_cond=global_cond, **kwargs)
-            # x = checkpoint(layer, x, rotary_pos_emb = rotary_pos_emb, global_cond=global_cond, **kwargs)
 
             if return_info:
                 info["hidden_states"].append(x)

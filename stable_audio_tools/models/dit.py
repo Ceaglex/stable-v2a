@@ -212,8 +212,8 @@ class DiffusionTransformer(nn.Module):
         elif self.transformer_type == "continuous_transformer":
             # x: input sequence                                               [batchsize, audio_seq_len, hidden_dim(VAE)]
             # prepend_embeds: time condition, as a global conditiom           [batchsize, 1, embed_dim=1536]
-            # context: video feature condition, use for cross attention       [batchsize, seq_len, cond_embed_dim]
-            # cross_attn_cond_mask, mask = None
+            # context: video feature condition, use for cross attention       [batchsize, video_seq_len, cond_embed_dim]
+            # context_mask, mask = None
             # prepend_mask :                                                  [batchsize, 1], True
             output = self.transformer(x, prepend_embeds=prepend_inputs, context=cross_attn_cond, context_mask=cross_attn_cond_mask, mask=mask, prepend_mask=prepend_mask, return_info=return_info, **extra_args, **kwargs)
             if return_info:

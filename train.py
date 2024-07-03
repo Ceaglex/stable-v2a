@@ -23,7 +23,7 @@ def main():
     # state_dict = torch.load('./lightning_logs/version_2/checkpoints/epoch=9-step=12800.ckpt')['state_dict']
     # state_dict = OrderedDict([(".".join(key.split('.')[1:]), value)  for key, value in state_dict.items()])
     model = create_model_from_config(model_config)
-    model.load_state_dict(load_file('./weight/StableAudio/lightning_logs/version_3/checkpoints/epoch=9-step=14620.safetensors'), strict=True)
+    model.load_state_dict(load_file('./weight/StableAudio/lightning_logs/version_3/checkpoints/epoch=9-step=14620.safetensors'), strict=False)
 
 
     info_dirs = [
