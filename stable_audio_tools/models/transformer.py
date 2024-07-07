@@ -11,7 +11,7 @@ from torch.cuda.amp import autocast
 from typing import Callable, Literal
 
 try:
-    from flash_attn import flash_attn_func, flash_attn_kvpacked_func, DISABLE
+    from flash_attn import flash_attn_func, flash_attn_kvpacked_func
 except ImportError as e:
     print(e)
     print('flash_attn not installed, disabling Flash Attention')
@@ -19,7 +19,7 @@ except ImportError as e:
     flash_attn_func = None
 
 
-def create_aligned_attn_bias(L, S, attn_bind_width=11):
+def create_aligned_attn_bias(L, S, attn_bind_width=16):
     bind_interval = S/L
     attn_weight = torch.cat([torch.linspace(0, 1, attn_bind_width), torch.linspace(1, 0, attn_bind_width)])
     attn_bias = torch.zeros(L,S)
@@ -349,7 +349,8 @@ class Attention(nn.Module):
         )
 
         
-        self.custom_attn_bias_weight = torch.nn.Parameter(torch.tensor(float(custom_attn_bias_weight))) if custom_attn_bias_weight else 0
+        # self.custom_attn_bias_weight = torch.nn.Parameter(torch.tensor(float(custom_attn_bias_weight))) 
+        self.custom_attn_bias_weight = custom_attn_bias_weight
 
 
 
@@ -606,7 +607,7 @@ class TransformerBlock(nn.Module):
                 dim_context=dim_context,
                 causal = causal,
                 zero_init_output=zero_init_branch_outputs,
-                custom_attn_bias_weight=custom_attn_bias_weight,
+                custom_attn_bias_weight=0,
                 **attn_kwargs
             )
         
@@ -697,7 +698,7 @@ class ContinuousTransformer(nn.Module):
         conformer=False,
         use_sinusoidal_emb=False,
         use_abs_pos_emb=False,
-        abs_pos_emb_max_length=10000,
+        abs_pos_emb_max_length=3000,
         **kwargs
         ):
 
@@ -707,6 +708,7 @@ class ContinuousTransformer(nn.Module):
         self.depth = depth
         self.causal = causal
         self.layers = nn.ModuleList([])
+        self.cond_token_dim = cond_token_dim
 
         self.project_in = nn.Linear(dim_in, dim, bias=False) if dim_in is not None else nn.Identity()
         self.project_out = nn.Linear(dim, dim_out, bias=False) if dim_out is not None else nn.Identity()
@@ -719,10 +721,12 @@ class ContinuousTransformer(nn.Module):
         self.use_sinusoidal_emb = use_sinusoidal_emb
         if use_sinusoidal_emb:
             self.pos_emb = ScaledSinusoidalEmbedding(dim)
+            self.pos_emb_cond = ScaledSinusoidalEmbedding(cond_token_dim)
 
         self.use_abs_pos_emb = use_abs_pos_emb
         if use_abs_pos_emb:
             self.pos_emb = AbsolutePositionalEmbedding(dim, abs_pos_emb_max_length)
+            self.pos_emb_cond = AbsolutePositionalEmbedding(cond_token_dim, abs_pos_emb_max_length)
 
         for i in range(depth):
             self.layers.append(
@@ -735,7 +739,9 @@ class ContinuousTransformer(nn.Module):
                     causal = causal,
                     zero_init_branch_outputs = zero_init_branch_outputs,
                     conformer=conformer,
-                    custom_attn_bias_weight=i/(depth*2),
+                    # custom_attn_bias_weight=i/(depth*2)+0.5,
+                    # custom_attn_bias_weight=1-i/(depth),
+                    custom_attn_bias_weight=0,
                     layer_ix=i,
                     **kwargs
                 )
@@ -780,6 +786,9 @@ class ContinuousTransformer(nn.Module):
 
         if self.use_sinusoidal_emb or self.use_abs_pos_emb:
             x = x + self.pos_emb(x)
+            kwargs['context'] = kwargs['context'] + self.pos_emb_cond(kwargs['context'])
+            # print(kwargs['context'].shape, self.cond_token_dim,  x.shape, self.dim)
+            
 
 
         # Iterate over the transformer layers

@@ -70,11 +70,12 @@ class VideoFeatDataset(torch.utils.data.Dataset):
         sample_rate=44100, 
         # sample_size=2097152, 
         # random_crop=True,
-        force_channels="stereo"
+        force_channels="stereo",
+        limit_num = None,
     ):
         super().__init__()
 
-        self.all_file_info = self.get_audio_info(info_dirs, audio_dirs, exts) 
+        self.all_file_info = self.get_audio_info(info_dirs, audio_dirs, exts, limit_num) 
         # dict("video_path", "fps", "duration", "frame_num", "feature", "audio_path")
 
 
@@ -111,7 +112,8 @@ class VideoFeatDataset(torch.utils.data.Dataset):
     def  get_audio_info(self,
                         info_dirs,  # directories to store pickle info
                         audio_dirs,   # directories to store audio files
-                        exts = 'wav'  # extention for each audio dir
+                        exts = 'wav',  # extention for each audio dir
+                        limit_num = None,
                         ):
 
         file_info = []
@@ -130,8 +132,11 @@ class VideoFeatDataset(torch.utils.data.Dataset):
             audio_dir = audio_dirs[i]
             ext = f".{exts[i]}"
 
-    
-            for pickle_path in glob.glob(os.path.join(info_dir, "*.pickle"))[:30]:  #########
+            pickle_paths = glob.glob(os.path.join(info_dir, "*.pickle"))
+            if limit_num:
+                pickle_paths = pickle_paths[:limit_num]
+                
+            for pickle_path in pickle_paths:  #########
                 audio_name = os.path.basename(pickle_path).replace('.pickle', ext)
                 audio_path = os.path.join(audio_dir, audio_name)
                 if not os.path.exists(audio_path):

@@ -1,24 +1,22 @@
 import pytorch_lightning as pl
-import sys, gc
-import random
 import torch
-import torchaudio
 import typing as tp
 import wandb
-
-from ema_pytorch import EMA
-from einops import rearrange
-from safetensors.torch import save_file
-from torch import optim
-from torch.nn import functional as F
+import shutil
 from pytorch_lightning.utilities.rank_zero import rank_zero_only
+from safetensors.torch import save_file
+from torch.nn import functional as F
 
+from .. import  replace_audio, save_audio
 from ..inference.sampling import get_alphas_sigmas, sample, sample_discrete_euler
+from ..inference.generation import generate_diffusion_cond
 from ..models.diffusion import ConditionedDiffusionModelWrapper
 from .losses import MSELoss, MultiLoss
 from .utils import create_optimizer_from_config, create_scheduler_from_config
 
-from time import time
+
+
+
 
 
 
@@ -184,13 +182,76 @@ class DiffusionCondTrainingWrapper(pl.LightningModule):
         self.epoch_losses_info = []
 
 
-    def test_step(self, batch, batch_idx):
+    def validation_step(self, batch, batch_idx):
         pass
-    def on_test_epoch_end(self):
+    def on_validation_epoch_end(self):
         pass
+
 
     def export_model(self, path, use_safetensors=True):
         if use_safetensors:
             save_file(self.diffusion.state_dict(), path)
         else:
             torch.save({"state_dict": self.diffusion.state_dict()}, path)
+
+
+
+
+class DiffusionCondDemoCallback(pl.Callback):
+    '''
+    Upload media table to wandb
+    '''
+    def __init__(self, 
+                 test_dataloader,
+                 sample_rate = 44100,
+                 duration = 10,
+                 output_dir = "./demo/temp"):
+        super().__init__()
+        self.test_dataloader = test_dataloader
+        self.sample_rate = sample_rate
+        self.duration = duration
+        self.output_dir = output_dir
+
+
+    @rank_zero_only
+    @torch.no_grad()
+    def on_train_epoch_end(self, trainer, module: DiffusionCondTrainingWrapper) -> None:  
+        module.eval()
+        # table = wandb.Table(columns=['gt_video', "gen_video", "gen_audio"])
+        table = wandb.Table(columns=["gen_video", "gen_audio"])
+        
+        for audio, conditioning in self.test_dataloader:
+            output = generate_diffusion_cond(
+                model = module.diffusion,
+                steps=150,
+                cfg_scale=7,
+                conditioning=conditioning,
+                sample_size= self.sample_rate*self.duration,
+                batch_size=len(audio),
+                sigma_min=0.3,
+                sigma_max=500,
+                sampler_type="dpmpp-3m-sde",
+                device=module.device
+            )
+                
+            for idx in range(len(audio)):
+                video_path = conditioning['video_path'][idx].replace('../../', './')
+                gt_video = wandb.Video(video_path, fps=4)
+
+                audio_path = f"{self.output_dir}/{video_path.split('/')[-1].replace('.mp4', '.wav')}"
+                save_audio(output[idx:1+idx], audio_path, self.sample_rate)
+                gen_audio = wandb.Audio(audio_path, sample_rate=self.sample_rate)
+
+                moved_video_path = f"{self.output_dir}/{video_path.split('/')[-1]}"
+                shutil.copy(video_path, moved_video_path)
+                generated_video_path = moved_video_path.replace(".mp4","_GEN.mp4")
+                replace_audio(moved_video_path, audio_path, generated_video_path)
+                gen_video = wandb.Video(generated_video_path, fps=4)
+
+                # table.add_data(gt_video, gen_video, gen_audio)
+                table.add_data(gen_video, gen_audio)
+
+        trainer.logger.experiment.log({f"table{module.current_epoch}":table})
+        torch.cuda.empty_cache()
+
+        
