@@ -130,11 +130,12 @@ def main(mp4_dir,
 
 if __name__ == "__main__":
     train_test = 'train'
-    dataset = 'VGGSound'
+    dataset = 'unav100'
     duration = 10
-    # mp4_dir    = f'../../dataset/video/{train_test}/{dataset}/{duration}'
-    mp4_dir = f'../../../{dataset}/dataset/{train_test}/{duration}'
+    mp4_dir = f'../../../{dataset}/dataset/{train_test}'
     pickle_dir = f'../../dataset/feature/{train_test}/{dataset}/{duration}'
+    # mp4_dir = f'../../../{dataset}/dataset/{train_test}/{duration}'
+    # pickle_dir = f'../../dataset/feature/{train_test}/{dataset}/{duration}'
 
     frame_size = 20
     main(mp4_dir = mp4_dir, pickle_dir = pickle_dir, duration = duration, frame_size = frame_size)
