@@ -25,13 +25,12 @@ from .utils import Stereo, Mono, PhaseFlipper, PadCrop_Normalized_T
 
 
 def collation_fn(samples):
+    if type(samples[0]) == tuple:
         batched = list(zip(*samples))
         # batch(tuple(tensor), tuple(dict) )
         # length of tuple == batchsize
         result = []
-
         for b in batched:
-
             if isinstance(b[0], torch.Tensor):
                 max_length = max([audio.shape[1] for audio in b])
                 b = torch.stack([
@@ -57,15 +56,35 @@ def collation_fn(samples):
                 for key in list_keys:
                     combined_dict[key] = [metadata[key] for metadata in b]
                 result.append(combined_dict)
-
         return result
+    
+
+    elif type(samples[0]) == dict:
+        b = samples
+        combined_dict = {}
+        stack_keys = ['fps','duration', 'frame_num']
+        pad_keys = ['feature']
+        list_keys = ['video_path']
+
+        for key in stack_keys:
+            combined_dict[key] = torch.tensor([[metadata[key]] for metadata in b])
+        for key in pad_keys:
+            max_length = max([metadata[key].shape[0] for metadata in b])
+            combined_dict[key] = torch.stack([
+                F.pad(metadata[key], (0, 0, 0, max_length - metadata[key].shape[0]), mode='constant', value=0) 
+                for metadata in b
+            ])
+        for key in list_keys:
+            combined_dict[key] = [metadata[key] for metadata in b]
+        return combined_dict
+        
 
 
 class VideoFeatDataset(torch.utils.data.Dataset):
     def __init__(
         self, 
         info_dirs,
-        audio_dirs,
+        audio_dirs = None,
         exts='wav',
         sample_rate=44100, 
         # sample_size=2097152, 
@@ -74,7 +93,7 @@ class VideoFeatDataset(torch.utils.data.Dataset):
         limit_num = None,
     ):
         super().__init__()
-
+        self.audio_dirs = audio_dirs
         self.all_file_info = self.get_audio_info(info_dirs, audio_dirs, exts, limit_num) 
         # dict("video_path", "fps", "duration", "frame_num", "feature", "audio_path")
 
@@ -118,36 +137,62 @@ class VideoFeatDataset(torch.utils.data.Dataset):
 
         file_info = []
 
-        if type(info_dirs) is str:
-            info_dirs = [info_dirs]
-        if type(audio_dirs) is str:
-            audio_dirs = [audio_dirs]
-        if type(exts) is str:
-            exts = [exts for _ in range(len(audio_dirs))]
+        if audio_dirs != None:
+            if type(info_dirs) is str:
+                info_dirs = [info_dirs]
+            if type(audio_dirs) is str:
+                audio_dirs = [audio_dirs]
+            if type(exts) is str:
+                exts = [exts for _ in range(len(audio_dirs))]
 
-        assert len(audio_dirs) == len(info_dirs), "Infomation Directories list should match the Audio File Directories list !!"
+            assert len(audio_dirs) == len(info_dirs), "Infomation Directories list should match the Audio File Directories list !!"
 
-        for i in range(len(info_dirs)):
-            info_dir = info_dirs[i]
-            audio_dir = audio_dirs[i]
-            ext = f".{exts[i]}"
+            for i in range(len(info_dirs)):
+                info_dir = info_dirs[i]
+                audio_dir = audio_dirs[i]
+                ext = f".{exts[i]}"
 
-            pickle_paths = glob.glob(os.path.join(info_dir, "*.pickle"))
-            if limit_num:
-                pickle_paths = pickle_paths[:limit_num]
-                
-            for pickle_path in pickle_paths:  #########
-                audio_name = os.path.basename(pickle_path).replace('.pickle', ext)
-                audio_path = os.path.join(audio_dir, audio_name)
-                if not os.path.exists(audio_path):
-                    continue
-                with open(pickle_path, 'rb') as file:
-                    info = pickle.load(file)
-                    info.update({"audio_path":audio_path})
-                    for key, item in info.items():
-                        if isinstance(info[key], torch.Tensor):
-                            info[key] = item.cpu().detach()
-                    file_info.append(info)
+                pickle_paths = glob.glob(os.path.join(info_dir, "*.pickle"))
+                if limit_num:
+                    pickle_paths = pickle_paths[:limit_num]
+                    
+                for pickle_path in pickle_paths:  #########
+                    audio_name = os.path.basename(pickle_path).replace('.pickle', ext)
+                    audio_path = os.path.join(audio_dir, audio_name)
+                    if not os.path.exists(audio_path):
+                        continue
+                    with open(pickle_path, 'rb') as file:
+                        info = pickle.load(file)
+                        info.update({"audio_path":audio_path})
+                        for key, item in info.items():
+                            if isinstance(info[key], torch.Tensor):
+                                info[key] = item.cpu().detach()
+                        file_info.append(info)
+
+
+        else:
+            if type(info_dirs) is str:
+                info_dirs = [info_dirs]
+            if type(exts) is str:
+                exts = [exts for _ in range(len(info_dirs))]
+
+            for i in range(len(info_dirs)):
+                info_dir = info_dirs[i]
+                ext = f".{exts[i]}"
+
+                pickle_paths = glob.glob(os.path.join(info_dir, "*.pickle"))
+                if limit_num:
+                    pickle_paths = pickle_paths[:limit_num]
+                    
+                for pickle_path in pickle_paths:  #########
+                    audio_name = os.path.basename(pickle_path).replace('.pickle', ext)
+
+                    with open(pickle_path, 'rb') as file:
+                        info = pickle.load(file)
+                        for key, item in info.items():
+                            if isinstance(info[key], torch.Tensor):
+                                info[key] = item.cpu().detach()
+                        file_info.append(info)
         return file_info
 
 
@@ -159,6 +204,9 @@ class VideoFeatDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         info_dict = self.all_file_info[idx]
+        if self.audio_dirs == None:
+            return info_dict
+
         audio_file = info_dict['audio_path']
         try:
             # TODO: Add load audio
