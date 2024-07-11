@@ -26,7 +26,7 @@ def main():
         model_config = json.load(f)
     sample_rate = model_config["sample_rate"]
     model = create_model_from_config(model_config)
-    model.load_state_dict(load_file('./weight/StableAudio/2024-07-06 21:34:56/epoch=3-step=1023.safetensors'), strict=True)
+    model.load_state_dict(load_file('./weight/StableAudio/2024-07-09 12:11:40/epoch=3-step=1018.safetensors'), strict=True)
 
 
     ds_config = {
