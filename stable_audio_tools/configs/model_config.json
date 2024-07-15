@@ -76,7 +76,7 @@
                 "project_cond_tokens": false,
                 "transformer_type": "continuous_transformer",
                 "use_sinusoidal_emb": false,
-                "use_abs_pos_emb": true
+                "use_abs_pos_emb": false
             }
         },
         "io_channels": 64
@@ -89,7 +89,7 @@
                 "optimizer": {
                     "type": "AdamW",
                     "config": {
-                        "lr": 5e-6,
+                        "lr": 5e-5,
                         "betas": [0.9, 0.999],
                         "weight_decay": 1e-3
                     }

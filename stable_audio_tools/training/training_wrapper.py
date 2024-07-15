@@ -1,4 +1,5 @@
 import pytorch_lightning as pl
+import os
 import torch
 import typing as tp
 import wandb
@@ -203,55 +204,66 @@ class DiffusionCondDemoCallback(pl.Callback):
     '''
     def __init__(self, 
                  test_dataloader,
+                 every_n_epochs = 1,
                  sample_rate = 44100,
-                 duration = 10,
                  output_dir = "./demo/temp"):
         super().__init__()
+        self.every_n_epochs = every_n_epochs
         self.test_dataloader = test_dataloader
         self.sample_rate = sample_rate
-        self.duration = duration
         self.output_dir = output_dir
 
 
     @rank_zero_only
     @torch.no_grad()
     def on_train_epoch_end(self, trainer, module: DiffusionCondTrainingWrapper) -> None:  
-        module.eval()
-        # table = wandb.Table(columns=['gt_video', "gen_video", "gen_audio"])
-        table = wandb.Table(columns=["gen_video", "gen_audio"])
-        
-        for audio, conditioning in self.test_dataloader:
-            output = generate_diffusion_cond(
-                model = module.diffusion,
-                steps=150,
-                cfg_scale=7,
-                conditioning=conditioning,
-                sample_size= self.sample_rate*self.duration,
-                batch_size=len(audio),
-                sigma_min=0.3,
-                sigma_max=500,
-                sampler_type="dpmpp-3m-sde",
-                device=module.device
-            )
+        if module.current_epoch % self.every_n_epochs == 0:
+            try:
+                module.eval()
+                # table = wandb.Table(columns=['gt_video', "gen_video", "gen_audio"])
+                table = wandb.Table(columns=["gen_video", "gen_audio"])
                 
-            for idx in range(len(audio)):
-                video_path = conditioning['video_path'][idx].replace('../../', './')
-                gt_video = wandb.Video(video_path, fps=4)
+                for audio, conditioning in self.test_dataloader:
+                    duration = max(conditioning['duration'])
+                    output = generate_diffusion_cond(
+                        model = module.diffusion,
+                        steps=150,
+                        cfg_scale=7,
+                        conditioning=conditioning,
+                        sample_size= int(self.sample_rate*duration),
+                        batch_size=len(audio),
+                        sigma_min=0.3,
+                        sigma_max=500,
+                        sampler_type="dpmpp-3m-sde",
+                        device=module.device
+                    )
+                        
+                    for idx in range(len(audio)):
+                        if 'AudioSet' in conditioning['video_path'][idx]:
+                            l = conditioning['video_path'][idx].split('/')
+                            video_path = os.path.join('/home/chengxin/chengxin/AudioSet/dataset/', l[-4], l[-2], l[-1])
+                        else:
+                            video_path = conditioning['video_path'][idx].replace('../../../', '/home/chengxin/chengxin/')
+                        # video_path = conditioning['video_path'][idx].replace('../../', './')
+                        gt_video = wandb.Video(video_path, fps=4)
 
-                audio_path = f"{self.output_dir}/{video_path.split('/')[-1].replace('.mp4', '.wav')}"
-                save_audio(output[idx:1+idx], audio_path, self.sample_rate)
-                gen_audio = wandb.Audio(audio_path, sample_rate=self.sample_rate)
+                        audio_path = f"{self.output_dir}/{video_path.split('/')[-1].replace('.mp4', '.wav')}"
+                        waveform = output[idx:1+idx,...,:int(conditioning['duration'][idx]*self.sample_rate)]
+                        save_audio(waveform, audio_path, self.sample_rate)
+                        gen_audio = wandb.Audio(audio_path, sample_rate=self.sample_rate)
 
-                moved_video_path = f"{self.output_dir}/{video_path.split('/')[-1]}"
-                shutil.copy(video_path, moved_video_path)
-                generated_video_path = moved_video_path.replace(".mp4","_GEN.mp4")
-                replace_audio(moved_video_path, audio_path, generated_video_path)
-                gen_video = wandb.Video(generated_video_path, fps=4)
+                        moved_video_path = f"{self.output_dir}/{video_path.split('/')[-1]}"
+                        shutil.copy(video_path, moved_video_path)
+                        generated_video_path = moved_video_path.replace(".mp4","_GEN.mp4")
+                        replace_audio(moved_video_path, audio_path, generated_video_path)
+                        gen_video = wandb.Video(generated_video_path, fps=4)
 
-                # table.add_data(gt_video, gen_video, gen_audio)
-                table.add_data(gen_video, gen_audio)
+                        # table.add_data(gt_video, gen_video, gen_audio)
+                        table.add_data(gen_video, gen_audio)
 
-        trainer.logger.experiment.log({f"table{module.current_epoch}":table})
-        torch.cuda.empty_cache()
+                trainer.logger.experiment.log({f"table{module.current_epoch}":table})
+                torch.cuda.empty_cache()
+            except:
+                pass
 
         

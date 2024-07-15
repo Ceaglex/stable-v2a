@@ -6,6 +6,9 @@
 *.out
 *.ckpt
 
+default_config.yaml
 /build
 /lightning_logs
 /weight
+/__pycache__
+*/__pycache__

@@ -1,4 +1,5 @@
 import json
+import os
 from accelerate import Accelerator
 from tqdm import tqdm
 import torch
@@ -15,10 +16,10 @@ def main():
     accelerator = Accelerator()
     device = accelerator.device
 
-    dataset = "unav100"
+    dataset = "VGGSound"
     train_test = 'test'
     info_dirs = [f'./dataset/feature/{train_test}/{dataset}/10']
-    output_dir = f"/home/chengxin/chengxin/{dataset}/generated_audios/stablev2a"
+    output_dir = f"/home/chengxin/chengxin/{dataset}/generated_audios/stablev2a/10"
 
 
     model_config_file = './stable_audio_tools/configs/model_config.json'
@@ -26,7 +27,7 @@ def main():
         model_config = json.load(f)
     sample_rate = model_config["sample_rate"]
     model = create_model_from_config(model_config)
-    model.load_state_dict(load_file('./weight/StableAudio/2024-07-09 12:11:40/epoch=3-step=1018.safetensors'), strict=True)
+    model.load_state_dict(load_file('./weight/StableAudio/2024-07-06 10:28:13/epoch=30-step=58.safetensors'), strict=True)
 
 
     ds_config = {
@@ -38,7 +39,7 @@ def main():
         # 'limit_num':50
     }
     dl_config = {
-        'batch_size':1, 
+        'batch_size':50, 
         'shuffle':False,
         'num_workers':4, 
         'persistent_workers':True, 
@@ -53,12 +54,13 @@ def main():
     if isinstance(model, torch.nn.parallel.DistributedDataParallel):
         model = model.module
     for conditioning in tqdm(dataloader, desc = f'GPU-{device}   '):
+        duration = max(conditioning['duration'])
         output = generate_diffusion_cond(
             model = model.to(device),
-            steps=150,
+            steps=100,
             cfg_scale=7,
             conditioning=conditioning,
-            sample_size=int(sample_rate*conditioning['duration'][0]),
+            sample_size=int(sample_rate*duration),
             batch_size=len(conditioning['feature']),
             sigma_min=0.3,
             sigma_max=500,
@@ -69,7 +71,9 @@ def main():
             # Save generated audio
             video_path = conditioning['video_path'][idx].replace('../../', './')
             audio_path = f"{output_dir}/{video_path.split('/')[-1].replace('.mp4', '.wav')}"
-            save_audio(output[idx:1+idx], audio_path, sample_rate)
+            
+            waveform = output[idx:1+idx,...,:int(conditioning['duration'][idx]*sample_rate)]
+            save_audio(waveform, audio_path, sample_rate)
             
             # Replace the audio of original video to generated one
             # moved_video_path = f"{output_dir}/{video_path.split('/')[-1]}"

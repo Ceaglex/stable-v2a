@@ -22,31 +22,34 @@ def main():
 
 
     model = create_model_from_config(model_config)
-    # model.load_state_dict(load_file('/home/chengxin/chengxin/stable-v2a/weight/StableAudio/model.safetensors'), strict=False)    # 最原始的t2a模型
+    model.load_state_dict(load_file('/home/chengxin/chengxin/stable-v2a/weight/StableAudio/model.safetensors'), strict=False)    # 最原始的t2a模型
     # model.load_state_dict(load_file('./weight/StableAudio/lightning_logs/version_3/checkpoints/epoch=9-step=14620.safetensors'), strict=True)   # 第一版有成果的v2a模型
     # model.load_state_dict(load_file('./weight/StableAudio/2024-07-02 19:49:04/epoch=2-step=427.safetensors'), strict=False)   # 一个还不错的v2a模型, 可以用作训练的base
-    # model.load_state_dict(load_file('./weight/StableAudio/2024-07-04 11:41:24/epoch=39-step=59.safetensors'), strict=True)    # 增加了attnbias，解决了一定time align问题
-    # model.load_state_dict(load_file('./weight/StableAudio/2024-07-03 21:46:54/epoch=18-step=543.safetensors'), strict=True)   # 增加了attnbias，表现较好的模型
-    model.load_state_dict(load_file('./weight/StableAudio/2024-07-06 10:28:13/epoch=30-step=58.safetensors'), strict=True)   # x和cond上加入了pos_ebd, 目前应该是time align和semantic表现最好的
+    # model.load_state_dict(load_file('./weight/StableAudio/2024-07-06 10:28:13/epoch=30-step=58.safetensors'), strict=False)   # x和cond上加入了pos_ebd, 目前应该是time align和semantic表现最好的
 
 
     info_dirs = [
         './dataset/feature/train/AudioSet/10', 
-        './dataset/feature/train/VGGSound/10'
+        # './dataset/feature/train/VGGSound/10',
+        # './dataset/feature/train/unav100/10',
+        # './dataset/feature/train/AVSync15/10'
         ]
     audio_dirs = [
         '/home/chengxin/chengxin/AudioSet/generated_audios/train/10', 
-        '/home/chengxin/chengxin/VGGSound/generated_audios/train/10'
+        # '/home/chengxin/chengxin/VGGSound/generated_audios/train/10',
+        # '/home/chengxin/chengxin/unav100/generated_audios/train',
+        # '/home/chengxin/chengxin/AVSync15/generated_audios/train'
         ]
     ds_config = {
         'info_dirs' : info_dirs,
         'audio_dirs' : audio_dirs,
         'sample_rate':sample_rate, 
         'exts':'wav',
-        'force_channels':"stereo"
+        'force_channels':"stereo",
+        # 'limit_num':300,
     }
     dl_config = {
-        'batch_size':25, 
+        'batch_size':64, 
         'shuffle':True,
         # 'num_workers':1, 
         # 'persistent_workers':True, 
@@ -58,8 +61,18 @@ def main():
 
 
 
-    info_dirs = ['./dataset/feature/test/AudioSet/10']
-    audio_dirs = ['/home/chengxin/chengxin/AudioSet/generated_audios/test/10']
+    info_dirs = [
+        # './dataset/feature/test/AudioSet/10', 
+        './dataset/feature/test/VGGSound/10',
+        # './dataset/feature/test/unav100/10',
+        # './dataset/feature/test/AVSync15/10'
+    ]
+    audio_dirs = [
+        # '/home/chengxin/chengxin/AudioSet/generated_audios/test/10', 
+        '/home/chengxin/chengxin/VGGSound/generated_audios/test/10',
+        # '/home/chengxin/chengxin/unav100/generated_audios/test',
+        # '/home/chengxin/chengxin/AVSync15/generated_audios/test'
+    ]
     ds_config = {
         'info_dirs' : info_dirs,
         'audio_dirs' : audio_dirs,
@@ -93,9 +106,9 @@ def main():
 
     run_name = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     wandb_logger = pl.loggers.WandbLogger(project="stable-v2a", name = run_name, save_dir="./weight/StableAudio")
-    ckpt_callback = pl.callbacks.ModelCheckpoint(every_n_epochs=1, dirpath=f'./weight/StableAudio/{run_name}', filename = '{epoch}-{step}', save_top_k=-1)
-    demo_callback = DiffusionCondDemoCallback(test_dataloader=test_dataloader)
-    devices = [0,1,2,3,4,5,6,7] 
+    ckpt_callback = pl.callbacks.ModelCheckpoint(every_n_epochs=10, dirpath=f'./weight/StableAudio/{run_name}', filename = '{epoch}-{step}', save_top_k=-1)
+    demo_callback = DiffusionCondDemoCallback(test_dataloader=test_dataloader, every_n_epochs=10)
+    devices = [0,1,2,3] 
 
 
     strategy = 'ddp_find_unused_parameters_true' if len(devices) > 1 else "auto" 
