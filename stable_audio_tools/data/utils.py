@@ -81,8 +81,14 @@ class PhaseFlipper(nn.Module):
         return -signal if (random.random() < self.p) else signal
         
 class Mono(nn.Module):
+  def __init__(self, channel):
+    self.channel = channel
   def __call__(self, signal):
-    return torch.mean(signal, dim=0, keepdims=True) if len(signal.shape) > 1 else signal
+    if len(signal.shape) > 1:
+        w = torch.mean(signal, dim=0, keepdims=True)
+        return torch.concat([w for _ in range(self.channel)])
+    else:
+        return signal
 
 class Stereo(nn.Module):
   def __call__(self, signal):

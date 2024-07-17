@@ -7,10 +7,11 @@ import random
 import re
 import subprocess
 import time
+import copy
 import torch
 import torchaudio
 import torch.nn.functional as F
-
+from tqdm import tqdm
 import webdataset as wds
 import glob
 import pickle
@@ -87,6 +88,7 @@ class VideoFeatDataset(torch.utils.data.Dataset):
         audio_dirs = None,
         exts='wav',
         sample_rate=44100, 
+        fps=22,
         # sample_size=2097152, 
         # random_crop=True,
         force_channels="stereo",
@@ -94,6 +96,7 @@ class VideoFeatDataset(torch.utils.data.Dataset):
     ):
         super().__init__()
         self.audio_dirs = audio_dirs
+        self.fps = fps
         self.all_file_info = self.get_audio_info(info_dirs, audio_dirs, exts, limit_num) 
         # dict("video_path", "fps", "duration", "frame_num", "feature", "audio_path")
 
@@ -102,10 +105,11 @@ class VideoFeatDataset(torch.utils.data.Dataset):
         self.force_channels = force_channels
         self.encoding = torch.nn.Sequential(
             Stereo() if self.force_channels == "stereo" else torch.nn.Identity(),
-            Mono() if self.force_channels == "mono" else torch.nn.Identity(),
+            Mono(2) if self.force_channels == "mono" else torch.nn.Identity(),
         )
 
         self.sr = sample_rate
+        
         print(f'Found {len(self.all_file_info)} files')
 
 
@@ -166,6 +170,8 @@ class VideoFeatDataset(torch.utils.data.Dataset):
                         info.update({"audio_path":audio_path})
                         for key, item in info.items():
                             if isinstance(info[key], torch.Tensor):
+                                # if key == 'feature':
+                                    # item = item[np.linspace(0, item.shape[0], int(item.shape[0]/22*self.fps), endpoint=False, dtype=int)]
                                 info[key] = item.cpu().detach()
                         file_info.append(info)
 
@@ -191,6 +197,8 @@ class VideoFeatDataset(torch.utils.data.Dataset):
                         info = pickle.load(file)
                         for key, item in info.items():
                             if isinstance(info[key], torch.Tensor):
+                                # if key == 'feature':
+                                    # item = item[np.linspace(0, item.shape[0], int(item.shape[0]/22*self.fps), endpoint=False, dtype=int)]
                                 info[key] = item.cpu().detach()
                         file_info.append(info)
         return file_info
@@ -203,7 +211,7 @@ class VideoFeatDataset(torch.utils.data.Dataset):
 
 
     def __getitem__(self, idx):
-        info_dict = self.all_file_info[idx]
+        info_dict = copy.deepcopy(self.all_file_info[idx])
         if self.audio_dirs == None:
             return info_dict
 
@@ -212,7 +220,8 @@ class VideoFeatDataset(torch.utils.data.Dataset):
             # TODO: Add load audio
             audio = self.load_file(audio_file)
             info_dict['duration'] = round(audio.shape[1]/self.sr, 3)
-
+            info_dict['feature'] = info_dict['feature'] [np.linspace(0, info_dict['feature'] .shape[0], int(info_dict['feature'] .shape[0]/22*self.fps), endpoint=False, dtype=int)]
+            
             # TODO: Add pad_crop and augs
             # audio, t_start, t_end, seconds_start, seconds_total, padding_mask = self.pad_crop(audio)
             # if self.augs is not None:

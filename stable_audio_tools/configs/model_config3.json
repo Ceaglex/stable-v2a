@@ -1,6 +1,6 @@
 {
     "model_type": "diffusion_cond",
-    "sample_size": 441000,
+    "sample_size": 2097152,
     "sample_rate": 44100,
     "audio_channels": 2,
     "model": {
@@ -43,20 +43,35 @@
         "conditioning": {
             "configs": [
                 {
-                    "id": "feature",
-                    "type": "video_feature",
-                    "config": {                    
-                        "clip_name" : "ViT-L/14",
-                        "download_root" : "./weight/CLIP",
-                        "fps":22
+                    "id": "prompt",
+                    "type": "t5",
+                    "config": {
+                        "t5_model_name": "t5-base",
+                        "max_length": 128
+                    }
+                },
+                {
+                    "id": "seconds_start",
+                    "type": "number",
+                    "config": {
+                        "min_val": 0,
+                        "max_val": 512
+                    }
+                },
+                {
+                    "id": "seconds_total",
+                    "type": "number",
+                    "config": {
+                        "min_val": 0,
+                        "max_val": 512
                     }
                 }
             ],
-            "cond_dim": 768,
-            "default_keys":{ "feature" :"video_path"}
+            "cond_dim": 768
         },
         "diffusion": {
-            "cross_attention_cond_ids": ["feature"],
+            "cross_attention_cond_ids": ["prompt", "seconds_start", "seconds_total"],
+            "global_cond_ids": ["seconds_start", "seconds_total"],
             "type": "dit",
             "config": {
                 "io_channels": 64,
@@ -66,15 +81,13 @@
                 "cond_token_dim": 768,
                 "global_cond_dim": 1536,
                 "project_cond_tokens": false,
-                "transformer_type": "continuous_transformer",
-                "use_sinusoidal_emb": false,
-                "use_abs_pos_emb": true
+                "transformer_type": "continuous_transformer"
             }
         },
         "io_channels": 64
     },
     "training": {
-        "use_ema": false,
+        "use_ema": true,
         "log_loss_info": false,
         "optimizer_configs": {
             "diffusion": {
@@ -92,7 +105,7 @@
                         "inv_gamma": 1000000,
                         "power": 0.5,
                         "warmup": 0.99
-                    }   
+                    }
                 }
             }
         },

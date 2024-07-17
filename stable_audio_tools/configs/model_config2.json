@@ -68,7 +68,7 @@
                 "project_cond_tokens": false,
                 "transformer_type": "continuous_transformer",
                 "use_sinusoidal_emb": false,
-                "use_abs_pos_emb": true
+                "use_abs_pos_emb": false
             }
         },
         "io_channels": 64

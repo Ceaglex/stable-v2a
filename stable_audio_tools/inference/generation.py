@@ -174,6 +174,29 @@ def generate_diffusion_cond(
     return sampled
 
 
+# builds a softmask given the parameters
+# returns array of values 0 to 1, size sample_size, where 0 means noise / fresh generation, 1 means keep the input audio, 
+# and anything between is a mixture of old/new
+# ideally 0.5 is half/half mixture but i haven't figured this out yet
+def build_mask(sample_size, mask_args):
+    maskstart = math.floor(mask_args["maskstart"]/100.0 * sample_size)
+    maskend = math.ceil(mask_args["maskend"]/100.0 * sample_size)
+    softnessL = round(mask_args["softnessL"]/100.0 * sample_size)
+    softnessR = round(mask_args["softnessR"]/100.0 * sample_size)
+    marination = mask_args["marination"]
+    # use hann windows for softening the transition (i don't know if this is correct)
+    hannL = torch.hann_window(softnessL*2, periodic=False)[:softnessL]
+    hannR = torch.hann_window(softnessR*2, periodic=False)[softnessR:]
+    # build the mask. 
+    mask = torch.zeros((sample_size))
+    mask[maskstart:maskend] = 1
+    mask[maskstart:maskstart+softnessL] = hannL
+    mask[maskend-softnessR:maskend] = hannR
+    # marination finishes the inpainting early in the denoising schedule, and lets audio get changed in the final rounds
+    if marination > 0:        
+        mask = mask * (1-marination) 
+    #print(mask)
+    return mask
 
 
 def generate_diffusion_cond_from_path(
