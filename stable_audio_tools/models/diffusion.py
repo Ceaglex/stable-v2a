@@ -186,13 +186,14 @@ class ConditionedDiffusionModelWrapper(nn.Module):
                 "negative_input_concat_cond": input_concat_cond
             }
         else:
+
             return {
-                "cross_attn_cond": cross_attention_input,
-                "cross_attn_mask": cross_attention_masks,
-                "global_cond": global_cond,
-                "input_concat_cond": input_concat_cond,
-                "prepend_cond": prepend_cond,
-                "prepend_cond_mask": prepend_cond_mask
+                "cross_attn_cond": cross_attention_input, # (batch, seq, channels)
+                "cross_attn_mask": cross_attention_masks, # (batch, seq)
+                "global_cond": global_cond,               # None or (batch, concated_channels)
+                "input_concat_cond": input_concat_cond,   # None
+                "prepend_cond": prepend_cond,             # None
+                "prepend_cond_mask": prepend_cond_mask    # None
             }
 
     def forward(self, x: torch.Tensor, t: torch.Tensor, cond: tp.Dict[str, tp.Any], **kwargs):
@@ -242,6 +243,7 @@ class DiTWrapper(ConditionedDiffusionModel):
 
         assert batch_cfg, "batch_cfg must be True for DiTWrapper"
         #assert negative_input_concat_cond is None, "negative_input_concat_cond is not supported for DiTWrapper"
+        # print(cross_attn_cond.shape)
         return self.model(
             x,
             t,

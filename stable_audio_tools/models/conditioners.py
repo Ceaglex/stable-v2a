@@ -165,14 +165,16 @@ class NumberConditioner(Conditioner):
 
 class CLIPFeatConditioner(Conditioner):
     def __init__(self,
+                 output_dim :int,
                  fps :int = 22,
                  clip_name :str = None,
                  download_root :str = None,
+                 project_out: bool = False,
                  **kargs):
         '''
             Get the video feature from restored feature or videos
         '''
-        super().__init__(768, 768)
+        super().__init__(768, output_dim, project_out=project_out)
         self.fps = fps
         self.clip_name = clip_name
         self.download_root = download_root
@@ -245,21 +247,16 @@ class MultiConditioner(nn.Module):
     """
     def __init__(self, 
                  conditioners: tp.Dict[str, Conditioner], 
-                 default_keys: tp.Dict[str, str] = {},
                  ):
         super().__init__()
 
         self.conditioners = nn.ModuleDict(conditioners)
-        self.default_keys = default_keys
 
     def forward(self, batch_metadata: tp.Dict[str, tp.Any], device: tp.Union[torch.device, str]) -> tp.Dict[str, tp.Any]:
         output = {}
         for key, conditioner in self.conditioners.items():
             if key in batch_metadata: #  and len(batch_metadata[key]) != 0
                 output[key] = conditioner(batch_metadata[key], device)
-            elif key in self.default_keys:
-                key_ = self.default_keys[key]
-                output[key] = conditioner(batch_metadata[key_], device)
             else:
                 continue
             
@@ -280,7 +277,6 @@ def create_multi_conditioner_from_conditioning_config(config: tp.Dict[str, tp.An
     """
     conditioners = {}
     cond_dim = config["cond_dim"]
-    default_keys = config.get("default_keys", {})
 
     for conditioner_info in config["configs"]:
         id = conditioner_info["id"]
@@ -295,4 +291,4 @@ def create_multi_conditioner_from_conditioning_config(config: tp.Dict[str, tp.An
         elif conditioner_type == "t5":
             conditioners[id] = T5Conditioner(**conditioner_config)
 
-    return MultiConditioner(conditioners, default_keys=default_keys)
+    return MultiConditioner(conditioners)

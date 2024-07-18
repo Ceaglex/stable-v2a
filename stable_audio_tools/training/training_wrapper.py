@@ -84,7 +84,14 @@ class DiffusionCondTrainingWrapper(pl.LightningModule):
 
     def configure_optimizers(self):
         diffusion_opt_config = self.optimizer_configs['diffusion']
-        opt_diff = create_optimizer_from_config(diffusion_opt_config['optimizer'], self.diffusion.parameters())
+
+
+        # trainable_params = self.diffusion.parameters()
+        trainable_params = []
+        for name, param in self.diffusion.named_parameters():
+            if ('conditioners.feature' in name or 'cross_attn' in name) and param.requires_grad:
+                trainable_params.append(param)
+        opt_diff = create_optimizer_from_config(diffusion_opt_config['optimizer'], trainable_params)
 
         if "scheduler" in diffusion_opt_config:
             sched_diff = create_scheduler_from_config(diffusion_opt_config['scheduler'], opt_diff)
@@ -204,10 +211,12 @@ class DiffusionCondDemoCallback(pl.Callback):
     '''
     def __init__(self, 
                  test_dataloader,
+                 sample_size = None,
                  every_n_epochs = 1,
                  sample_rate = 44100,
                  output_dir = "./demo/temp"):
         super().__init__()
+        self.sample_size = sample_size
         self.every_n_epochs = every_n_epochs
         self.test_dataloader = test_dataloader
         self.sample_rate = sample_rate
@@ -225,20 +234,25 @@ class DiffusionCondDemoCallback(pl.Callback):
             table = wandb.Table(columns=["gen_video", "gen_audio"])
                 
             for audio, conditioning in self.test_dataloader:
-                duration = max(conditioning['duration'])
+                if self.sample_size:
+                    sample_size = self.sample_size
+                else:
+                    seconds_total = max(conditioning['seconds_total'])
+                    sample_size = int(self.sample_rate*seconds_total)
+                
                 output = generate_diffusion_cond(
                         model = module.diffusion,
-                        steps=150,
+                        steps=50,
                         cfg_scale=7,
                         conditioning=conditioning,
-                        sample_size= int(self.sample_rate*duration),
-                        batch_size=len(audio),
+                        sample_size= sample_size,
+                        batch_size=len(conditioning['feature']),
                         sigma_min=0.3,
                         sigma_max=500,
-                        sampler_type="dpmpp-3m-sde",
+                        sampler_type="k-dpm-fast",
                         device=module.device
                 )
-                        
+
                 for idx in range(len(audio)):
                     if 'AuidoSet' in conditioning['video_path'][idx] or 'AudioSet' in conditioning['video_path'][idx]:
                         l = conditioning['video_path'][idx].split('/')
@@ -249,7 +263,8 @@ class DiffusionCondDemoCallback(pl.Callback):
                     gt_video = wandb.Video(video_path, fps=4)
 
                     audio_path = f"{self.output_dir}/{video_path.split('/')[-1].replace('.mp4', '.wav')}"
-                    waveform = output[idx:1+idx,...,:int(conditioning['duration'][idx]*self.sample_rate)]
+                    waveform = output[idx:1+idx,...,:int(conditioning['seconds_total'][idx]*self.sample_rate)]
+
                     save_audio(waveform, audio_path, self.sample_rate)
                     gen_audio = wandb.Audio(audio_path, sample_rate=self.sample_rate)
 

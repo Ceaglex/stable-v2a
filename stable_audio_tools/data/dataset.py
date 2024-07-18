@@ -26,6 +26,11 @@ from .utils import Stereo, Mono, PhaseFlipper, PadCrop_Normalized_T
 
 
 def collation_fn(samples):
+    # stack_keys = ['fps','duration', 'frame_num']
+    stack_keys = ['seconds_start', 'seconds_total']
+    pad_keys = ['feature']
+    list_keys = ['video_path']
+
     if type(samples[0]) == tuple:
         batched = list(zip(*samples))
         # batch(tuple(tensor), tuple(dict) )
@@ -42,9 +47,6 @@ def collation_fn(samples):
 
             if isinstance(b[0], dict):
                 combined_dict = {}
-                stack_keys = ['fps','duration', 'frame_num']
-                pad_keys = ['feature']
-                list_keys = ['video_path']
 
                 for key in stack_keys:
                     combined_dict[key] = torch.tensor([[metadata[key]] for metadata in b])
@@ -63,9 +65,6 @@ def collation_fn(samples):
     elif type(samples[0]) == dict:
         b = samples
         combined_dict = {}
-        stack_keys = ['fps','duration', 'frame_num']
-        pad_keys = ['feature']
-        list_keys = ['video_path']
 
         for key in stack_keys:
             combined_dict[key] = torch.tensor([[metadata[key]] for metadata in b])
@@ -88,15 +87,16 @@ class VideoFeatDataset(torch.utils.data.Dataset):
         audio_dirs = None,
         exts='wav',
         sample_rate=44100, 
-        fps=22,
-        # sample_size=2097152, 
-        # random_crop=True,
+        fps=10,
+        sample_size=None, 
+        random_crop=True,
         force_channels="stereo",
         limit_num = None,
     ):
         super().__init__()
         self.audio_dirs = audio_dirs
         self.fps = fps
+        self.sample_size = sample_size
         self.all_file_info = self.get_audio_info(info_dirs, audio_dirs, exts, limit_num) 
         # dict("video_path", "fps", "duration", "frame_num", "feature", "audio_path")
 
@@ -138,7 +138,6 @@ class VideoFeatDataset(torch.utils.data.Dataset):
                         exts = 'wav',  # extention for each audio dir
                         limit_num = None,
                         ):
-
         file_info = []
 
         if audio_dirs != None:
@@ -170,8 +169,6 @@ class VideoFeatDataset(torch.utils.data.Dataset):
                         info.update({"audio_path":audio_path})
                         for key, item in info.items():
                             if isinstance(info[key], torch.Tensor):
-                                # if key == 'feature':
-                                    # item = item[np.linspace(0, item.shape[0], int(item.shape[0]/22*self.fps), endpoint=False, dtype=int)]
                                 info[key] = item.cpu().detach()
                         file_info.append(info)
 
@@ -197,8 +194,6 @@ class VideoFeatDataset(torch.utils.data.Dataset):
                         info = pickle.load(file)
                         for key, item in info.items():
                             if isinstance(info[key], torch.Tensor):
-                                # if key == 'feature':
-                                    # item = item[np.linspace(0, item.shape[0], int(item.shape[0]/22*self.fps), endpoint=False, dtype=int)]
                                 info[key] = item.cpu().detach()
                         file_info.append(info)
         return file_info
@@ -212,27 +207,32 @@ class VideoFeatDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         info_dict = copy.deepcopy(self.all_file_info[idx])
-        if self.audio_dirs == None:
-            return info_dict
-
-        audio_file = info_dict['audio_path']
         try:
-            # TODO: Add load audio
-            audio = self.load_file(audio_file)
-            info_dict['duration'] = round(audio.shape[1]/self.sr, 3)
-            info_dict['feature'] = info_dict['feature'] [np.linspace(0, info_dict['feature'] .shape[0], int(info_dict['feature'] .shape[0]/22*self.fps), endpoint=False, dtype=int)]
+            # process
+            info_dict['feature'] = info_dict['feature'][np.linspace(0, info_dict['feature'].shape[0], int(info_dict['feature'].shape[0]/info_dict['fps']*self.fps), endpoint=False, dtype=int)]
+            info_dict['seconds_total'] = info_dict['duration']
+            info_dict['seconds_start'] = 0
+            del info_dict['fps']
+            del info_dict['frame_num']
+            del info_dict['duration']
+
+            if self.audio_dirs == None:
+                return info_dict
             
-            # TODO: Add pad_crop and augs
-            # audio, t_start, t_end, seconds_start, seconds_total, padding_mask = self.pad_crop(audio)
-            # if self.augs is not None:
-            #     audio = self.augs(audio)
-
-            audio = audio.clamp(-1, 1)
-
-            # Encode the file to assist in prediction
+            # TODO: Add load audio
+            audio_file = info_dict['audio_path']
+            audio = self.load_file(audio_file)
             if self.encoding is not None:
                 audio = self.encoding(audio)
+            info_dict['seconds_total'] = round(audio.shape[1]/self.sr, 3)
+            audio = audio.clamp(-1, 1)
+            if self.sample_size:
+                audio = torch.concat([audio, torch.zeros([2, self.sample_size - audio.shape[1]])], dim=1)
+            
+            
+            # Encode the file to assist in prediction
 
+    
             return (audio, info_dict)
         
         except Exception as e:

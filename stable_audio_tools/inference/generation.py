@@ -218,7 +218,8 @@ def generate_diffusion_cond_from_path(
 ):
     if conditioning == None:
         conditioning = {}
-    conditioning['video_path'] = video_paths
+    conditioning['feature'] = video_paths
+
     model.to(device)
     output = generate_diffusion_cond(
         model = model,

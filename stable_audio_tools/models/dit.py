@@ -149,11 +149,11 @@ class DiffusionTransformer(nn.Module):
             '''[batchsize, seq_len, cond_token_dim]  ---->   [batchsize, seq_len, cond_embed_dim]'''
             cross_attn_cond = self.to_cond_embed(cross_attn_cond)
 
-
-        ######################################## None ########################################
         if global_embed is not None:
+            '''[batchsize, global_token_dim]  ---->   [batchsize, global_embed_dim]'''
             global_embed = self.to_global_embed(global_embed)
 
+        ######################################## None ########################################
         prepend_inputs = None 
         prepend_mask = None
         prepend_length = 0
@@ -187,8 +187,8 @@ class DiffusionTransformer(nn.Module):
         if self.global_cond_type == "prepend":
             if prepend_inputs is None:
                 # Prepend inputs are just the global embed, and the mask is all ones
-                prepend_inputs = global_embed.unsqueeze(1)                                        # [batchsize, 1, embed_dim=1536]
-                prepend_mask = torch.ones((x.shape[0], 1), device=x.device, dtype=torch.bool)     # [batchsize, 1]
+                prepend_inputs = global_embed.unsqueeze(1)                                        # (batchsize, 1, global_embed_dim=1536)
+                prepend_mask = torch.ones((x.shape[0], 1), device=x.device, dtype=torch.bool)     # (batchsize, 1)
             else:
                 # Prepend inputs are the prepend conditioning + the global embed
                 prepend_inputs = torch.cat([prepend_inputs, global_embed.unsqueeze(1)], dim=1)
@@ -211,7 +211,7 @@ class DiffusionTransformer(nn.Module):
             output = self.transformer(x, prepend_embeds=prepend_inputs, context=cross_attn_cond, context_mask=cross_attn_cond_mask, mask=mask, prepend_mask=prepend_mask, **extra_args, **kwargs)
         elif self.transformer_type == "continuous_transformer":
             # x: input sequence                                               [batchsize, audio_seq_len, hidden_dim(VAE)]
-            # prepend_embeds: time condition, as a global conditiom           [batchsize, 1, embed_dim=1536]
+            # prepend_embeds: global condition, as a global conditiom         [batchsize, 1, embed_dim=1536]
             # context: video feature condition, use for cross attention       [batchsize, video_seq_len, cond_embed_dim]
             # context_mask, mask = None
             # prepend_mask :                                                  [batchsize, 1], True
@@ -259,9 +259,9 @@ class DiffusionTransformer(nn.Module):
         if cross_attn_cond_mask is not None:
             cross_attn_cond_mask = cross_attn_cond_mask.bool()
             cross_attn_cond_mask = None # Temporarily disabling conditioning masks due to kernel issue for flash attention
-
         if prepend_cond_mask is not None:
             prepend_cond_mask = prepend_cond_mask.bool()
+
 
         # CFG dropout
         if cfg_dropout_prob > 0.0:

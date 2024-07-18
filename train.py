@@ -15,16 +15,18 @@ from stable_audio_tools.training.training_wrapper import DiffusionCondTrainingWr
 
 def main():
 
-    model_config_file = './stable_audio_tools/configs/model_config2.json'
+    model_config_file = './stable_audio_tools/configs/model_config1.json'
     with open(model_config_file) as f:
         model_config = json.load(f)
         sample_rate = model_config["sample_rate"]
+        sample_size = model_config["sample_size"]
+        sample_size = None
     print(sample_rate)
 
 
     model = create_model_from_config(model_config)
     state_dict = load_file('/home/chengxin/chengxin/stable-v2a/weight/StableAudio/model.safetensors')
-    state_dict = {k: v for k, v in state_dict.items() if 'pretransform' in k}
+    state_dict = {k: v for k, v in state_dict.items() if ('conditioners.feature' not in k and 'cross_attn' not in k)}
     model.load_state_dict(state_dict, strict=False)    # 最原始的t2a模型
     # model.load_state_dict(load_file('./weight/StableAudio/lightning_logs/version_3/checkpoints/epoch=9-step=14620.safetensors'), strict=True)   # 第一版有成果的v2a模型
     # model.load_state_dict(load_file('./weight/StableAudio/2024-07-02 19:49:04/epoch=2-step=427.safetensors'), strict=False)   # 一个还不错的v2a模型, 可以用作训练的base
@@ -33,13 +35,13 @@ def main():
 
     info_dirs = [
         './dataset/feature/train/AudioSet/10', 
-        './dataset/feature/train/VGGSound/10',
+        # './dataset/feature/train/VGGSound/10',
         # './dataset/feature/train/unav100/10',
         # './dataset/feature/train/AVSync15/10'
         ]
     audio_dirs = [
         '/home/chengxin/chengxin/AudioSet/generated_audios/train/10', 
-        '/home/chengxin/chengxin/VGGSound/generated_audios/train/10',
+        # '/home/chengxin/chengxin/VGGSound/generated_audios/train/10',
         # '/home/chengxin/chengxin/unav100/generated_audios/train',
         # '/home/chengxin/chengxin/AVSync15/generated_audios/train'
         ]
@@ -48,9 +50,12 @@ def main():
         'audio_dirs' : audio_dirs,
         'exts':'wav',
         'sample_rate':sample_rate, 
+        'sample_size':sample_size,
         'fps':10,
         'force_channels':"mono",
+        # 'limit_num':30
     }
+
     dl_config = {
         'batch_size':20, 
         'shuffle':True,
@@ -81,9 +86,11 @@ def main():
     ds_config = {
         'info_dirs' : info_dirs,
         'audio_dirs' : audio_dirs,
-        'sample_rate':sample_rate, 
         'exts':'wav',
-        'force_channels':"stereo",
+        'sample_rate':sample_rate, 
+        'sample_size':sample_size,
+        'fps':10,
+        'force_channels':"mono",
         'limit_num':30
     }
     dl_config = {
@@ -112,7 +119,7 @@ def main():
     run_name = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     wandb_logger = pl.loggers.WandbLogger(project="stable-v2a", name = run_name, save_dir="./weight/StableAudio")
     ckpt_callback = pl.callbacks.ModelCheckpoint(every_n_epochs=1, dirpath=f'./weight/StableAudio/{run_name}', filename = '{epoch}-{step}', save_top_k=-1)
-    demo_callback = DiffusionCondDemoCallback(test_dataloader=test_dataloader, every_n_epochs=1, sample_rate=sample_rate)
+    demo_callback = DiffusionCondDemoCallback(test_dataloader=test_dataloader, sample_size = sample_size, every_n_epochs=1, sample_rate=sample_rate)
     devices = [0,1,2,3] 
 
 
