@@ -86,11 +86,11 @@ class DiffusionCondTrainingWrapper(pl.LightningModule):
         diffusion_opt_config = self.optimizer_configs['diffusion']
 
 
-        # trainable_params = self.diffusion.parameters()
-        trainable_params = []
-        for name, param in self.diffusion.named_parameters():
-            if ('conditioners.feature' in name or 'cross_attn' in name) and param.requires_grad:
-                trainable_params.append(param)
+        trainable_params = self.diffusion.parameters()
+        # trainable_params = []
+        # for name, param in self.diffusion.named_parameters():
+        #     if ('conditioners.feature' in name or 'cross_attn' in name) and param.requires_grad:
+        #         trainable_params.append(param)
         opt_diff = create_optimizer_from_config(diffusion_opt_config['optimizer'], trainable_params)
 
         if "scheduler" in diffusion_opt_config:
@@ -169,6 +169,7 @@ class DiffusionCondTrainingWrapper(pl.LightningModule):
             'train_step/lr': self.trainer.optimizers[0].param_groups[0]['lr']
             # 'train/std_data': diffusion_input.std(),
         }
+        
         for loss_name, loss_value in losses.items():
             log_dict[f"train/{loss_name}"] = loss_value.detach()
         self.train_epoch_losses_info.append(log_dict)
@@ -188,7 +189,7 @@ class DiffusionCondTrainingWrapper(pl.LightningModule):
             }
         self.log_dict(log_dict)
         self.epoch_losses_info = []
-
+        print(f"Epoch:{self.current_epoch}   Loss:{train_epoch_loss.mean()}")
 
     def validation_step(self, batch, batch_idx):
         pass
@@ -242,14 +243,14 @@ class DiffusionCondDemoCallback(pl.Callback):
                 
                 output = generate_diffusion_cond(
                         model = module.diffusion,
-                        steps=50,
+                        steps=150,
                         cfg_scale=7,
                         conditioning=conditioning,
                         sample_size= sample_size,
                         batch_size=len(conditioning['feature']),
                         sigma_min=0.3,
                         sigma_max=500,
-                        sampler_type="k-dpm-fast",
+                        sampler_type="dpmpp-3m-sde", # k-dpm-fast
                         device=module.device
                 )
 
@@ -278,7 +279,6 @@ class DiffusionCondDemoCallback(pl.Callback):
                     table.add_data(gen_video, gen_audio)
 
             trainer.logger.experiment.log({f"table{module.current_epoch}":table})
-            print(f"table{module.current_epoch}")
             torch.cuda.empty_cache()
         except Exception as e:
             print(e)

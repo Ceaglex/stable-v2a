@@ -25,7 +25,11 @@ def main():
     model_config_file = './stable_audio_tools/configs/model_config.json'
     with open(model_config_file) as f:
         model_config = json.load(f)
-    sample_rate = model_config["sample_rate"]
+        sample_size = model_config['sample_size']
+        sample_size = None
+        sample_rate = model_config['sample_rate']
+        fps = model_config['fps']
+
     model = create_model_from_config(model_config)
     model.load_state_dict(load_file('./weight/StableAudio/2024-07-06 10:28:13/epoch=30-step=58.safetensors'), strict=True)
 
@@ -35,7 +39,10 @@ def main():
         # 'audio_dirs' : audio_dirs,
         'exts':'wav',
         'sample_rate':sample_rate, 
-        'force_channels':"stereo",
+        'sample_size':sample_size,
+        'fps':fps,
+        'output_dir':output_dir,
+        # 'force_channels':"mono",
         # 'limit_num':50
     }
     dl_config = {
@@ -54,13 +61,13 @@ def main():
     if isinstance(model, torch.nn.parallel.DistributedDataParallel):
         model = model.module
     for conditioning in tqdm(dataloader, desc = f'GPU-{device}   '):
-        duration = max(conditioning['duration'])
+        seconds_total = max(conditioning['seconds_total'])
         output = generate_diffusion_cond(
             model = model.to(device),
             steps=100,
             cfg_scale=7,
             conditioning=conditioning,
-            sample_size=int(sample_rate*duration),
+            sample_size=int(sample_rate*seconds_total),
             batch_size=len(conditioning['feature']),
             sigma_min=0.3,
             sigma_max=500,
@@ -72,7 +79,7 @@ def main():
             video_path = conditioning['video_path'][idx].replace('../../', './')
             audio_path = f"{output_dir}/{video_path.split('/')[-1].replace('.mp4', '.wav')}"
             
-            waveform = output[idx:1+idx,...,:int(conditioning['duration'][idx]*sample_rate)]
+            waveform = output[idx:1+idx,...,:int(conditioning['seconds_total'][idx]*sample_rate)]
             save_audio(waveform, audio_path, sample_rate)
             
             # Replace the audio of original video to generated one

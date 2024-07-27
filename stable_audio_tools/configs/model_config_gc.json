@@ -1,8 +1,7 @@
 {
     "model_type": "diffusion_cond",
-    "sample_size": 441000,
+    "sample_size": 2097152,
     "sample_rate": 44100,
-    "fps": 22,
     "audio_channels": 2,
     "model": {
         "pretransform": {
@@ -49,15 +48,47 @@
                     "config": {                    
                         "clip_name" : "ViT-L/14",
                         "download_root" : "./weight/CLIP",
-                        "fps":22
+                        "fps":22,
+                        "project_out": true
+                    }
+                },
+                {
+                    "id": "time_cond",
+                    "type": "time_align",
+                    "config": {
+                        "output_dim": 1536
+                    }
+                },
+                {
+                    "id": "prompt",
+                    "type": "t5",
+                    "config": {
+                        "t5_model_name": "t5-base",
+                        "max_length": 128
+                    }
+                },
+                {
+                    "id": "seconds_start",
+                    "type": "number",
+                    "config": {
+                        "min_val": 0,
+                        "max_val": 512
+                    }
+                },
+                {
+                    "id": "seconds_total",
+                    "type": "number",
+                    "config": {
+                        "min_val": 0,
+                        "max_val": 512
                     }
                 }
             ],
-            "cond_dim": 768,
-            "default_keys":{ "feature" :"video_path"}
+            "cond_dim": 768
         },
         "diffusion": {
             "cross_attention_cond_ids": ["feature"],
+            "global_cond_ids": ["time_cond"],
             "type": "dit",
             "config": {
                 "io_channels": 64,
@@ -70,7 +101,7 @@
                 "transformer_type": "continuous_transformer",
                 "rotary_cond_emb":false,
                 "use_sinusoidal_emb": false,
-                "use_abs_pos_emb": true
+                "use_abs_pos_emb": false
             }
         },
         "io_channels": 64
@@ -83,7 +114,7 @@
                 "optimizer": {
                     "type": "AdamW",
                     "config": {
-                        "lr": 1e-5,
+                        "lr": 5e-5,
                         "betas": [0.9, 0.999],
                         "weight_decay": 1e-3
                     }

@@ -144,7 +144,8 @@ class DiffusionTransformer(nn.Module):
         return_info=False,
         **kwargs):
 
-
+        
+        # print(x.shape, cross_attn_cond.shape, global_embed, prepend_cond, input_concat_cond)
         if cross_attn_cond is not None:
             '''[batchsize, seq_len, cond_token_dim]  ---->   [batchsize, seq_len, cond_embed_dim]'''
             cross_attn_cond = self.to_cond_embed(cross_attn_cond)
@@ -153,7 +154,7 @@ class DiffusionTransformer(nn.Module):
             '''[batchsize, global_token_dim]  ---->   [batchsize, global_embed_dim]'''
             global_embed = self.to_global_embed(global_embed)
 
-        ######################################## None ########################################
+
         prepend_inputs = None 
         prepend_mask = None
         prepend_length = 0
@@ -164,13 +165,13 @@ class DiffusionTransformer(nn.Module):
             if prepend_cond_mask is not None:
                 prepend_mask = prepend_cond_mask
 
+    
         if input_concat_cond is not None:
             # Interpolate input_concat_cond to the same length as x
             if input_concat_cond.shape[2] != x.shape[2]:
                 input_concat_cond = F.interpolate(input_concat_cond, (x.shape[2], ), mode='nearest')
             x = torch.cat([x, input_concat_cond], dim=1)
-        ######################################## None ########################################
-
+            # print(input_concat_cond.shape, x.shape)
 
         # Get the batch of timestep embeddings
         timestep_embed = self.to_timestep_embed(self.timestep_features(t[:, None])) # [batchsize, embed_dim]
@@ -195,8 +196,9 @@ class DiffusionTransformer(nn.Module):
                 prepend_mask = torch.cat([prepend_mask, torch.ones((x.shape[0], 1), device=x.device, dtype=torch.bool)], dim=1)
             prepend_length = prepend_inputs.shape[1]
 
-        x = self.preprocess_conv(x) + x        # [batchsize, hidden_dim(VAE), timestep]
-        x = rearrange(x, "b c t -> b t c")     # [batchsize, timestep, hidden_dim(VAE)]
+        x = self.preprocess_conv(x) + x        # [batchsize, hidden_dim (VAE_dim+input_concat_dim), timestep]
+        x = rearrange(x, "b c t -> b t c")     # [batchsize, timestep, hidden_dim (VAE_dim+input_concat_dim)]
+
 
         extra_args = {}
         if self.global_cond_type == "adaLN":
@@ -215,6 +217,7 @@ class DiffusionTransformer(nn.Module):
             # context: video feature condition, use for cross attention       [batchsize, video_seq_len, cond_embed_dim]
             # context_mask, mask = None
             # prepend_mask :                                                  [batchsize, 1], True
+            # print(x.shape, prepend_inputs.shape, global_embed.shape)
             output = self.transformer(x, prepend_embeds=prepend_inputs, context=cross_attn_cond, context_mask=cross_attn_cond_mask, mask=mask, prepend_mask=prepend_mask, return_info=return_info, **extra_args, **kwargs)
             if return_info:
                 output, info = output

@@ -29,6 +29,7 @@ def collation_fn(samples):
     # stack_keys = ['fps','duration', 'frame_num']
     stack_keys = ['seconds_start', 'seconds_total']
     pad_keys = ['feature']
+    # list_keys = ['video_path', 'time_cond']
     list_keys = ['video_path']
 
     if type(samples[0]) == tuple:
@@ -92,11 +93,13 @@ class VideoFeatDataset(torch.utils.data.Dataset):
         random_crop=True,
         force_channels="stereo",
         limit_num = None,
+        output_dir = None,
     ):
         super().__init__()
         self.audio_dirs = audio_dirs
         self.fps = fps
         self.sample_size = sample_size
+        self.output_dir = output_dir
         self.all_file_info = self.get_audio_info(info_dirs, audio_dirs, exts, limit_num) 
         # dict("video_path", "fps", "duration", "frame_num", "feature", "audio_path")
 
@@ -170,6 +173,8 @@ class VideoFeatDataset(torch.utils.data.Dataset):
                         for key, item in info.items():
                             if isinstance(info[key], torch.Tensor):
                                 info[key] = item.cpu().detach()
+                        if self.output_dir!=None and os.path.exists(f"{self.output_dir}/{audio_name}"):
+                            continue
                         file_info.append(info)
 
 
@@ -195,6 +200,8 @@ class VideoFeatDataset(torch.utils.data.Dataset):
                         for key, item in info.items():
                             if isinstance(info[key], torch.Tensor):
                                 info[key] = item.cpu().detach()
+                        if self.output_dir!=None and os.path.exists(f"{self.output_dir}/{audio_name}"):
+                            continue
                         file_info.append(info)
         return file_info
 

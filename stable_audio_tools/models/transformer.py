@@ -395,6 +395,7 @@ class Attention(nn.Module):
         mask = None,
         context_mask = None,
         rotary_pos_emb = None,
+        rotary_cond_emb = None,
         causal = None
     ):
         h, kv_h, has_context = self.num_heads, self.kv_heads, context is not None
@@ -435,6 +436,24 @@ class Attention(nn.Module):
 
             q = q.to(q_dtype)
             k = k.to(k_dtype)
+        if rotary_pos_emb is not None and rotary_cond_emb is not None and has_context:
+            freqs_q, _ = rotary_pos_emb
+            freqs_k, _ = rotary_cond_emb
+
+            q_dtype = q.dtype
+            k_dtype = k.dtype
+
+            q = q.to(torch.float32)
+            k = k.to(torch.float32)
+            freqs_q = freqs_q.to(torch.float32)
+            freqs_k = freqs_k.to(torch.float32)
+
+            q = apply_rotary_pos_emb(q, freqs_q)
+            k = apply_rotary_pos_emb(k, freqs_k)
+
+            q = q.to(q_dtype)
+            k = k.to(k_dtype)
+            pass
         
         input_mask = context_mask 
 
@@ -646,23 +665,24 @@ class TransformerBlock(nn.Module):
         global_cond=None,
         mask = None,
         context_mask = None,
-        rotary_pos_emb = None
+        rotary_pos_emb = None,
+        rotary_cond_emb = None
     ):
-        
         if self.global_cond_dim is not None and self.global_cond_dim > 0 and global_cond is not None:
             
             scale_self, shift_self, gate_self, scale_ff, shift_ff, gate_ff = self.to_scale_shift_gate(global_cond).unsqueeze(1).chunk(6, dim = -1)
-
             # self-attention with adaLN
             residual = x
             x = self.pre_norm(x)
             x = x * (1 + scale_self) + shift_self
-            x = self.self_attn(x, mask = mask, rotary_pos_emb = rotary_pos_emb)
+            x = self.self_attn(x, mask = mask, 
+                               rotary_pos_emb = rotary_pos_emb, rotary_cond_emb = rotary_cond_emb)
             x = x * torch.sigmoid(1 - gate_self)
             x = x + residual
 
             if context is not None:
-                x = x + self.cross_attn(self.cross_attend_norm(x), context = context, context_mask = context_mask)
+                x = x + self.cross_attn(self.cross_attend_norm(x), context = context, context_mask = context_mask,
+                                        rotary_pos_emb = rotary_pos_emb, rotary_cond_emb = rotary_cond_emb)
 
             if self.conformer is not None:
                 x = x + self.conformer(x)
@@ -676,10 +696,12 @@ class TransformerBlock(nn.Module):
             x = x + residual
 
         else:
-            x = x + self.self_attn(self.pre_norm(x), mask = mask, rotary_pos_emb = rotary_pos_emb)
+            x = x + self.self_attn(self.pre_norm(x), mask = mask, 
+                                   rotary_pos_emb = rotary_pos_emb, rotary_cond_emb = rotary_cond_emb)
 
             if context is not None:
-                x = x + self.cross_attn(self.cross_attend_norm(x), context = context, context_mask = context_mask)
+                x = x + self.cross_attn(self.cross_attend_norm(x), context = context, context_mask = context_mask,
+                                        rotary_pos_emb = rotary_pos_emb, rotary_cond_emb = rotary_cond_emb)
 
             # None
             if self.conformer is not None:
@@ -703,6 +725,7 @@ class ContinuousTransformer(nn.Module):
         global_cond_dim=None,
         causal=False,
         rotary_pos_emb=True,
+        rotary_cond_emb=False,
         zero_init_branch_outputs=True,
         conformer=False,
         use_sinusoidal_emb=False,
@@ -725,6 +748,10 @@ class ContinuousTransformer(nn.Module):
             self.rotary_pos_emb = RotaryEmbedding(max(dim_heads // 2, 32))
         else:
             self.rotary_pos_emb = None
+        if rotary_cond_emb:
+            self.rotary_cond_emb = RotaryEmbedding(max(dim_heads // 2, 32))
+        else:
+            self.rotary_cond_emb = None
 
         self.use_sinusoidal_emb = use_sinusoidal_emb
         if use_sinusoidal_emb:
@@ -767,38 +794,44 @@ class ContinuousTransformer(nn.Module):
             "hidden_states": [],
         }
 
+        # print(x.shape, prepend_embeds.shape, global_cond)
         x = self.project_in(x)
-
+        # print(x.shape, prepend_embeds.shape, global_cond)
         if prepend_embeds is not None:
             prepend_length, prepend_dim = prepend_embeds.shape[1:]
             assert prepend_dim == x.shape[-1], 'prepend dimension must match sequence dimension'
 
-            x = torch.cat((prepend_embeds, x), dim = -2)   # [batchsize, prepend_length + audio_seq_length, dim]
+            x = torch.cat((prepend_embeds, x), dim = -2)   # [batchsize, prepend_len(global_cond) + audioseq_len, dim = 1536]
 
             if prepend_mask is not None or mask is not None:
                 mask = mask if mask is not None else torch.ones((batch, seq), device = device, dtype = torch.bool)
                 prepend_mask = prepend_mask if prepend_mask is not None else torch.ones((batch, prepend_length), device = device, dtype = torch.bool)
                 mask = torch.cat((prepend_mask, mask), dim = -1)  # [batchsize, prepend_length + audio_seq_length]
-
         
         # Attention layers 
         if self.rotary_pos_emb is not None:
-            rotary_pos_emb = self.rotary_pos_emb.forward_from_seq_len(x.shape[1]) 
-            # (Tensor([seq_len, 32], 1)
+            rotary_pos_emb = self.rotary_pos_emb.forward_from_seq_len(x.shape[1])  # (Tensor([seq_len, 32], 1)
+            # print("1",rotary_pos_emb[0].shape, rotary_pos_emb[1])
         else:
             rotary_pos_emb = None
+        if self.rotary_cond_emb is not None:
+            rotary_cond_emb = self.rotary_cond_emb.forward_from_seq_len(kwargs['context'].shape[1])
+            # print("2",rotary_cond_emb[0].shape, rotary_cond_emb[1])
+        else:
+            rotary_cond_emb = None
+
 
 
         if self.use_sinusoidal_emb or self.use_abs_pos_emb:
             x = x + self.pos_emb(x)
             # kwargs['context'] = kwargs['context'] + self.pos_emb(kwargs['context'])
-            # kwargs['context'] = kwargs['context'] + self.pos_emb_cond(kwargs['context'])
+            kwargs['context'] = kwargs['context'] + self.pos_emb_cond(kwargs['context'])
 
 
         # Iterate over the transformer layers
         for layer in self.layers:
             # global_cond = None
-            x = layer(x, rotary_pos_emb = rotary_pos_emb, global_cond=global_cond, **kwargs)
+            x = layer(x, rotary_pos_emb = rotary_pos_emb, rotary_cond_emb = rotary_cond_emb, global_cond=global_cond, **kwargs)
             # x = checkpoint(layer, x, rotary_pos_emb = rotary_pos_emb, global_cond=global_cond, **kwargs)
 
             if return_info:

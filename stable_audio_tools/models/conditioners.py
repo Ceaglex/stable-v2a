@@ -157,11 +157,31 @@ class NumberConditioner(Conditioner):
             normalized_floats = normalized_floats.to(embedder_dtype)
 
             float_embeds = self.embedder(normalized_floats).unsqueeze(1)
-    
+
+            # print(float_embeds.shape)
             return [float_embeds, torch.ones(float_embeds.shape[0], 1).to(device)]
 
 
-
+class TimeAlignConditioner(Conditioner):
+    def __init__(self, 
+                output_dim: int,):
+        super().__init__(output_dim, output_dim)
+        self.output_dim = output_dim
+    def forward(self, Time_info: tp.List[torch.Tensor], device=None) -> tp.Any:
+        padded_length = self.output_dim
+        if padded_length == None:
+            padded_length = max([len(t) for t in Time_info])
+        for i in range(len(Time_info)):
+            time_cond = Time_info[i].to(device)
+            length = len(time_cond)
+            time_cond = F.pad(time_cond, (0,padded_length-length), "constant", -1)
+            # time_cond = torch.tensor([time_cond[int(i / padded_length * length)] for i in range(padded_length)]).to(device)
+            Time_info[i] = time_cond
+        Time_info = torch.stack(Time_info).unsqueeze(1).to(device) # [batchsize, 1, padded_length]
+        # print(padded_length, Time_info.shape)
+        return [Time_info, torch.ones(Time_info.shape[0], 1).to(device)]
+        
+        
 
 class CLIPFeatConditioner(Conditioner):
     def __init__(self,
@@ -281,6 +301,7 @@ def create_multi_conditioner_from_conditioning_config(config: tp.Dict[str, tp.An
     for conditioner_info in config["configs"]:
         id = conditioner_info["id"]
         conditioner_type = conditioner_info["type"]
+
         conditioner_config = {"output_dim": cond_dim}
         conditioner_config.update(conditioner_info["config"])
 
@@ -290,5 +311,7 @@ def create_multi_conditioner_from_conditioning_config(config: tp.Dict[str, tp.An
             conditioners[id] = CLIPFeatConditioner(**conditioner_config)
         elif conditioner_type == "t5":
             conditioners[id] = T5Conditioner(**conditioner_config)
+        elif conditioner_type == "time_align":
+            conditioners[id] = TimeAlignConditioner(**conditioner_config)
 
     return MultiConditioner(conditioners)
