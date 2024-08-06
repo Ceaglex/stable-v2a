@@ -19,7 +19,7 @@ def main():
     dataset = "VGGSound"
     train_test = 'test'
     info_dirs = [f'./dataset/feature/{train_test}/{dataset}/10']
-    output_dir = f"/home/chengxin/chengxin/{dataset}/generated_audios/stablev2a/10"
+    output_dir = f"/home/chengxin/chengxin/{dataset}/generated_audios/stablev2a_/10"
 
 
     model_config_file = './stable_audio_tools/configs/model_config.json'
@@ -31,8 +31,11 @@ def main():
         fps = model_config['fps']
 
     model = create_model_from_config(model_config)
-    model.load_state_dict(load_file('./weight/StableAudio/2024-07-06 10:28:13/epoch=30-step=58.safetensors'), strict=True)
-
+    # model.load_state_dict(load_file('./weight/StableAudio/2024-07-29 10:26:20/epoch=55-step=87.safetensors'), strict=True)
+    # model.load_state_dict(load_file('./weight/StableAudio/2024-07-24 23:06:33/epoch=70-step=304.safetensors'), strict=True)
+    # model.load_state_dict(load_file('./weight/StableAudio/2024-08-01 09:36:20/epoch=29-step=2818.safetensors'), strict=True)  # BEST model_config.json
+    # model.load_state_dict(load_file('./weight/StableAudio/2024-08-01 09:36:20/epoch=45-step=2818.safetensors'), strict=True)    # Second BEST model_config.json
+    model.load_state_dict(load_file('./weight/StableAudio/2024-08-04 02:52:24/epoch=27-step=2818.safetensors'), strict=True)
 
     ds_config = {
         'info_dirs' : info_dirs,
@@ -46,9 +49,9 @@ def main():
         # 'limit_num':50
     }
     dl_config = {
-        'batch_size':50, 
+        'batch_size':64, 
         'shuffle':False,
-        'num_workers':4, 
+        'num_workers':8, 
         'persistent_workers':True, 
         'pin_memory':True, 
         'drop_last':False, 
@@ -64,14 +67,14 @@ def main():
         seconds_total = max(conditioning['seconds_total'])
         output = generate_diffusion_cond(
             model = model.to(device),
-            steps=100,
+            steps=150,
             cfg_scale=7,
             conditioning=conditioning,
             sample_size=int(sample_rate*seconds_total),
             batch_size=len(conditioning['feature']),
             sigma_min=0.3,
             sigma_max=500,
-            sampler_type="dpmpp-3m-sde",
+            sampler_type="dpmpp-3m-sde", # k-dpm-fast
             device=device
         )
         for idx in range(len(conditioning['feature'])):

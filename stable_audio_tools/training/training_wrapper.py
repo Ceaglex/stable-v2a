@@ -89,8 +89,9 @@ class DiffusionCondTrainingWrapper(pl.LightningModule):
         trainable_params = self.diffusion.parameters()
         # trainable_params = []
         # for name, param in self.diffusion.named_parameters():
-        #     if ('conditioners.feature' in name or 'cross_attn' in name) and param.requires_grad:
+        #     if ('pos_emb' in name) and param.requires_grad:
         #         trainable_params.append(param)
+        #         print(name)
         opt_diff = create_optimizer_from_config(diffusion_opt_config['optimizer'], trainable_params)
 
         if "scheduler" in diffusion_opt_config:
