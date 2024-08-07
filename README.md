@@ -1,5 +1,5 @@
 # Stable-V2A
-![alt text](DiT.png)
+![alt text](asset/DiT.png)
 ## TODO
 - [DONE] Add function: generate audio from video without pre-extracted CLIP features.
 - Add parameter: Duration. Clamp the generated audio wav beyond the duration limit.

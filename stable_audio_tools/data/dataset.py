@@ -27,7 +27,7 @@ from .utils import Stereo, Mono, PhaseFlipper, PadCrop_Normalized_T
 
 def collation_fn(samples):
     # stack_keys = ['fps','duration', 'frame_num']
-    stack_keys = ['seconds_start', 'seconds_total']
+    stack_keys = ['fps','seconds_start', 'seconds_total']
     pad_keys = ['feature']
     # list_keys = ['video_path', 'time_cond']
     list_keys = ['video_path']
@@ -219,7 +219,7 @@ class VideoFeatDataset(torch.utils.data.Dataset):
             info_dict['feature'] = info_dict['feature'][np.linspace(0, info_dict['feature'].shape[0], int(info_dict['feature'].shape[0]/info_dict['fps']*self.fps), endpoint=False, dtype=int)]
             info_dict['seconds_total'] = info_dict['duration']
             info_dict['seconds_start'] = 0
-            del info_dict['fps']
+            # del info_dict['fps']
             del info_dict['frame_num']
             del info_dict['duration']
 
