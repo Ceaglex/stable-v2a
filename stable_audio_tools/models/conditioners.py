@@ -158,7 +158,7 @@ class NumberConditioner(Conditioner):
 
             float_embeds = self.embedder(normalized_floats).unsqueeze(1)
 
-            # print(float_embeds.shape)
+            # print(floats, float_embeds.shape)
             return [float_embeds, torch.ones(float_embeds.shape[0], 1).to(device)]
 
 

@@ -807,7 +807,8 @@ class ContinuousTransformer(nn.Module):
                 mask = mask if mask is not None else torch.ones((batch, seq), device = device, dtype = torch.bool)
                 prepend_mask = prepend_mask if prepend_mask is not None else torch.ones((batch, prepend_length), device = device, dtype = torch.bool)
                 mask = torch.cat((prepend_mask, mask), dim = -1)  # [batchsize, prepend_length + audio_seq_length]
-        
+        # print(x.shape, prepend_embeds.shape, global_cond)
+
         # Attention layers 
         if self.rotary_pos_emb is not None:
             rotary_pos_emb = self.rotary_pos_emb.forward_from_seq_len(x.shape[1])  # (Tensor([seq_len, 32], 1)

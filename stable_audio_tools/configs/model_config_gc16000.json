@@ -1,10 +1,10 @@
 {
     "model_type": "diffusion_cond",
-    "sample_size": 441000,
+    "sample_size": 160000,
     "variable_length": null,
-    "sample_rate": 44100,
-    "fps": 22,
-    "audio_channels": 2,
+    "sample_rate": 16000,
+    "fps": 8,
+    "audio_channels": 1,
     "model": {
         "pretransform": {
             "type": "autoencoder",
@@ -50,7 +50,23 @@
                     "config": {                    
                         "clip_name" : "ViT-L/14",
                         "download_root" : "./weight/CLIP",
-                        "fps":22
+                        "fps":8
+                    }
+                },
+                {
+                    "id": "seconds_start",
+                    "type": "number",
+                    "config": {
+                        "min_val": 0,
+                        "max_val": 512
+                    }
+                },
+                {
+                    "id": "seconds_total",
+                    "type": "number",
+                    "config": {
+                        "min_val": 0,
+                        "max_val": 512
                     }
                 }
             ],
@@ -59,6 +75,7 @@
         },
         "diffusion": {
             "cross_attention_cond_ids": ["feature"],
+            "global_cond_ids": ["seconds_start","seconds_total"],
             "type": "dit",
             "config": {
                 "io_channels": 64,

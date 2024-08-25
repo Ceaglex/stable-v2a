@@ -12,7 +12,7 @@ from .. import  replace_audio, save_audio
 from ..inference.sampling import get_alphas_sigmas, sample, sample_discrete_euler
 from ..inference.generation import generate_diffusion_cond
 from ..models.diffusion import ConditionedDiffusionModelWrapper
-from .losses import MSELoss, MultiLoss
+from .losses import MSELoss, MSELoss_wDuration, MultiLoss
 from .utils import create_optimizer_from_config, create_scheduler_from_config
 
 
@@ -32,6 +32,8 @@ class DiffusionCondTrainingWrapper(pl.LightningModule):
             optimizer_configs: dict = None,
             pre_encoded: bool = False,
             cfg_dropout_prob = 0.1,
+            duration_mask = "seconds_total",
+            latent_per_sec = 21.5,
             timestep_sampler: tp.Literal["uniform", "logit_normal"] = "uniform",
     ):
         super().__init__()
@@ -46,14 +48,27 @@ class DiffusionCondTrainingWrapper(pl.LightningModule):
 
         self.diffusion_objective = model.diffusion_objective
 
+
         self.loss_modules = [
-            MSELoss("output", 
-                   "targets", 
-                   weight=1.0, 
-                   mask_key=None, 
-                   name="mse_loss"
+            MSELoss_wDuration(
+                "output", 
+                "targets", 
+                duration_mask,    # duration_mask不设置成none时，只有部分latent会被用于loss计算
+                weight=1.0, 
+                mask_key=None, 
+                name="mse_loss",
+                latent_per_sec = latent_per_sec # sample rate/20
             )
         ]
+
+        # self.loss_modules = [
+        #     MSELoss("output", 
+        #            "targets", 
+        #            weight=1.0, 
+        #            mask_key=None, 
+        #            name="mse_loss"
+        #     )
+        # ]
 
         self.losses = MultiLoss(self.loss_modules)
 
@@ -87,11 +102,13 @@ class DiffusionCondTrainingWrapper(pl.LightningModule):
 
 
         trainable_params = self.diffusion.parameters()
-        # trainable_params = []
-        # for name, param in self.diffusion.named_parameters():
-        #     if ('pos_emb' in name) and param.requires_grad:
-        #         trainable_params.append(param)
-        #         print(name)
+        
+        trainable_params = []
+        for name, param in self.diffusion.named_parameters():
+            if ('pos_emb' in name) and param.requires_grad:
+                trainable_params.append(param)
+                print(name)
+
         opt_diff = create_optimizer_from_config(diffusion_opt_config['optimizer'], trainable_params)
 
         if "scheduler" in diffusion_opt_config:
@@ -107,6 +124,7 @@ class DiffusionCondTrainingWrapper(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         reals, metadata = batch
+        # print(reals.shape, metadata.keys(), metadata['seconds_total'], metadata['seconds_total'].shape)
         loss_info = {}
 
         diffusion_input = reals  # [batchsize, hidden_dim(VAE), seq]
@@ -159,6 +177,7 @@ class DiffusionCondTrainingWrapper(pl.LightningModule):
             loss_info.update({
                 "output": output,
                 "targets": targets,
+                "seconds_total":metadata['seconds_total'],
                 "padding_mask":  None,
             })
             loss, losses = self.losses(loss_info)
@@ -233,15 +252,16 @@ class DiffusionCondDemoCallback(pl.Callback):
         try:
             module.eval()
             # table = wandb.Table(columns=['gt_video', "gen_video", "gen_audio"])
-            table = wandb.Table(columns=["gen_video", "gen_audio"])
+            table = wandb.Table(columns=["gen_video", "gen_audio", "name"])
                 
             for audio, conditioning in self.test_dataloader:
-                if self.sample_size:
-                    sample_size = self.sample_size
-                else:
-                    seconds_total = max(conditioning['seconds_total'])
-                    sample_size = int(self.sample_rate*seconds_total)
-                
+                # if self.sample_size == None:
+                #     sample_size = int(self.sample_rate*max(conditioning['seconds_total']))
+                # else:
+                #     sample_size = self.sample_size
+                # print(sample_size, end = " ")
+                sample_size = int(self.sample_rate*max(conditioning['seconds_total'])) if self.sample_size == None else self.sample_size
+                print("sample_size: ", sample_size)
                 output = generate_diffusion_cond(
                         model = module.diffusion,
                         steps=150,
@@ -277,7 +297,7 @@ class DiffusionCondDemoCallback(pl.Callback):
                     gen_video = wandb.Video(generated_video_path, fps=4)
 
                     # table.add_data(gt_video, gen_video, gen_audio)
-                    table.add_data(gen_video, gen_audio)
+                    table.add_data(gen_video, gen_audio, video_path.split('/')[-1])
 
             trainer.logger.experiment.log({f"table{module.current_epoch}":table})
             torch.cuda.empty_cache()

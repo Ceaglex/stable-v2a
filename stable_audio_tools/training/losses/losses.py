@@ -1,5 +1,5 @@
 import typing as tp
-
+import torch
 from torch.nn import functional as F
 from torch import nn
 
@@ -48,12 +48,11 @@ class L1Loss(LossModule):
 class MSELoss(LossModule):
     def __init__(self, key_a: str, key_b: str, weight: float = 1.0, mask_key: str = None, name: str = 'mse_loss'):
         super().__init__(name=name, weight=weight)
-
         self.key_a = key_a
         self.key_b = key_b
-
         self.mask_key = mask_key
     
+
     def forward(self, info):
         mse_loss = F.mse_loss(info[self.key_a], info[self.key_b], reduction='none')    
 
@@ -69,9 +68,35 @@ class MSELoss(LossModule):
             mse_loss = mse_loss[mask]
 
         mse_loss = mse_loss.mean()
-
         return self.weight * mse_loss
     
+
+class MSELoss_wDuration(LossModule):
+    def __init__(self, key_a: str, key_b: str, key_c : str = None, latent_per_sec = 21.5, weight: float = 1.0, mask_key: str = None, name: str = 'mse_loss'):
+        super().__init__(name=name, weight=weight)
+        self.latent_per_sec = latent_per_sec
+        self.key_a = key_a
+        self.key_b = key_b
+        self.key_c = key_c
+        self.mask_key = mask_key
+    
+    def forward(self, info):
+        if self.key_c != None:
+            audio_bound = (info[self.key_c]*self.latent_per_sec).to(torch.float)
+            for i in range(len(audio_bound)):
+                bound_idx = min(int(audio_bound[i]),info[self.key_a].shape[-1])
+                # print(i, bound_idx, info[self.key_a].shape, info[self.key_b].shape)
+                info[self.key_a][i,:,bound_idx:] = 0
+                info[self.key_b][i,:,bound_idx:] = 0
+
+        mse_loss = F.mse_loss(info[self.key_a], info[self.key_b], reduction='none')    
+        mse_loss = mse_loss.mean()
+
+        if self.key_c != None:
+            mse_loss *= (info[self.key_a].shape[-1]/audio_bound.mean())
+
+        return self.weight * mse_loss
+
 
 class AuralossLoss(LossModule):
     def __init__(self, auraloss_module, input_key: str, target_key: str, name: str, weight: float = 1):
@@ -91,7 +116,6 @@ class AuralossLoss(LossModule):
 class MultiLoss(nn.Module):
     def __init__(self, losses: tp.List[LossModule]):
         super().__init__()
-
         self.losses = nn.ModuleList(losses)
 
     def forward(self, info):

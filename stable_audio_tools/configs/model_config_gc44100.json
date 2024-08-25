@@ -52,6 +52,22 @@
                         "download_root" : "./weight/CLIP",
                         "fps":22
                     }
+                },
+                {
+                    "id": "seconds_start",
+                    "type": "number",
+                    "config": {
+                        "min_val": 0,
+                        "max_val": 512
+                    }
+                },
+                {
+                    "id": "seconds_total",
+                    "type": "number",
+                    "config": {
+                        "min_val": 0,
+                        "max_val": 512
+                    }
                 }
             ],
             "cond_dim": 768,
@@ -59,6 +75,7 @@
         },
         "diffusion": {
             "cross_attention_cond_ids": ["feature"],
+            "global_cond_ids": ["seconds_start","seconds_total"],
             "type": "dit",
             "config": {
                 "io_channels": 64,
