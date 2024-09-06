@@ -338,7 +338,7 @@ class VideoFeatDataset_VL(torch.utils.data.Dataset):
 
                 pickle_paths = glob.glob(os.path.join(info_dir, "*.pickle"))
                 if limit_num:
-                    # random.shuffle(pickle_paths)
+                    random.shuffle(pickle_paths)
                     pickle_paths = pickle_paths[:limit_num]
                     
                 for pickle_path in pickle_paths:  #########
@@ -445,7 +445,7 @@ class VideoFeatDataset_VL(torch.utils.data.Dataset):
             audio = self.load_file(audio_file)
             if self.encoding is not None:
                 audio = self.encoding(audio)
-            info_dict['seconds_total'] = int(round(audio.shape[1]/self.sr, 3))
+            info_dict['seconds_total'] = min(int(audio.shape[1]/self.sr), int(self.sample_size/self.sr))
             # audio = audio.clamp(-1, 1)
 
             if self.variable_length != None:
@@ -454,7 +454,9 @@ class VideoFeatDataset_VL(torch.utils.data.Dataset):
                     
             if self.sample_size != None:
                 audio = audio[:, :self.sample_size-1]
+                info_dict['feature'] = info_dict['feature'][:info_dict['seconds_total']*self.fps]
                 audio = torch.concat([audio, torch.zeros([2, self.sample_size - audio.shape[1]])], dim=1)
+                
 
                     
 
