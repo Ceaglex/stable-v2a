@@ -135,7 +135,7 @@ def main():
     run_name = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     wandb_logger = pl.loggers.WandbLogger(project="stable-v2a", name = run_name, save_dir="./weight/StableAudio")
     ckpt_callback = pl.callbacks.ModelCheckpoint(every_n_epochs=1, dirpath=f'./weight/StableAudio/{run_name}', filename = '{epoch}-{step}', save_top_k=-1)
-    demo_callback = DiffusionCondDemoCallback(test_dataloader=test_dataloader, sample_size = sample_size, every_n_epochs=1, sample_rate=sample_rate)
+    demo_callback = DiffusionCondDemoCallback(test_dataloader=test_dataloader, sample_size = sample_size, every_n_epochs=5, sample_rate=sample_rate)
     devices = [3,5,6,7] 
 
 
@@ -144,7 +144,7 @@ def main():
         devices = devices, 
         accelerator="gpu",
         num_nodes = 1,
-        max_epochs=-1,
+        max_epochs=5,
         strategy = strategy,
         callbacks=[demo_callback, ckpt_callback],
         logger = wandb_logger,

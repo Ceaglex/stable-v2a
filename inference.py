@@ -21,7 +21,7 @@ def main():
     train_test = 'test'
     cfg_scale = 5
     info_dirs = [f'./dataset/feature/{train_test}/{dataset}/10']
-    output_dir = f"/home/chengxin/chengxin/{dataset}/generated_audios/{name}/model17_cfg5"
+    output_dir = f"/home/chengxin/chengxin/{dataset}/generated_audios/{name}/model19_cfg5"
 
 
     # model_config_file = './stable_audio_tools/configs/model_config.json'
@@ -49,7 +49,7 @@ def main():
     # model.load_state_dict(load_file('./weight/StableAudio/2024-08-04 02:52:24/epoch=36-step=2818.safetensors'), strict=True)    # BEST model_config.json
     # model.load_state_dict(load_file('./weight/StableAudio/2024-08-04 02:52:24/epoch=60-step=2818.safetensors'), strict=True)    # Not bad, can continue training if having time
     # model.load_state_dict(load_file('./weight/StableAudio/2024-08-19 11:11:56/epoch=60-step=2818.safetensors'), strict=True)    # BEST model_config_gc16000.json
-    model.load_state_dict(load_file('./weight/StableAudio/2024-09-05 13:05:20/epoch=2-step=101.safetensors'), strict=True)       # model_config_ss30.json
+    model.load_state_dict(load_file('./weight/StableAudio/2024-09-07 00:11:02/epoch=0-step=101.safetensors'), strict=True)       # model_config_ss30.json
 
 
     ds_config = {

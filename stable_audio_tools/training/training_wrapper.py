@@ -110,6 +110,7 @@ class DiffusionCondTrainingWrapper(pl.LightningModule):
                 print(name)
             if ('layers' in name ) and param.requires_grad:  #
                 idx = name[name.find('layers'):]
+                idx = int(idx.split('.')[1])
                 if idx >= 23:
                     trainable_params.append(param)
                     print(name)
