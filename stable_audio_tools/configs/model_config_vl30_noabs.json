@@ -1,10 +1,10 @@
 {
     "model_type": "diffusion_cond",
-    "sample_size": 160000,
-    "variable_length": null,
-    "sample_rate": 16000,
+    "sample_size": 1323000,
+    "variable_length": 30,
+    "sample_rate": 44100,
     "fps": 8,
-    "audio_channels": 1,
+    "audio_channels": 2,
     "model": {
         "pretransform": {
             "type": "autoencoder",
@@ -50,23 +50,7 @@
                     "config": {                    
                         "clip_name" : "ViT-L/14",
                         "download_root" : "./weight/CLIP",
-                        "fps":8
-                    }
-                },
-                {
-                    "id": "seconds_start",
-                    "type": "number",
-                    "config": {
-                        "min_val": 0,
-                        "max_val": 512
-                    }
-                },
-                {
-                    "id": "seconds_total",
-                    "type": "number",
-                    "config": {
-                        "min_val": 0,
-                        "max_val": 512
+                        "fps":22
                     }
                 }
             ],
@@ -75,7 +59,6 @@
         },
         "diffusion": {
             "cross_attention_cond_ids": ["feature"],
-            "global_cond_ids": ["seconds_start","seconds_total"],
             "type": "dit",
             "config": {
                 "io_channels": 64,
@@ -87,9 +70,8 @@
                 "project_cond_tokens": false,
                 "transformer_type": "continuous_transformer",
                 "rotary_cond_emb":false,
-                "rotary_pos_emb":true,
                 "use_sinusoidal_emb": false,
-                "use_abs_pos_emb": true
+                "use_abs_pos_emb": false
             }
         },
         "io_channels": 64
@@ -116,18 +98,6 @@
                     }   
                 }
             }
-        },
-        "demo": {
-            "demo_every": 2000,
-            "demo_steps": 250,
-            "num_demos": 4,
-            "demo_cond": [
-                {"prompt": "Amen break 174 BPM", "seconds_start": 0, "seconds_total": 12},
-                {"prompt": "A beautiful orchestral symphony, classical music", "seconds_start": 0, "seconds_total": 160},
-                {"prompt": "Chill hip-hop beat, chillhop", "seconds_start": 0, "seconds_total": 190},
-                {"prompt": "A pop song about love and loss", "seconds_start": 0, "seconds_total": 180}
-            ],
-            "demo_cfg_scales": [3, 6, 9]
         }
     }
 }

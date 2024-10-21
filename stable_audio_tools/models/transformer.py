@@ -421,7 +421,9 @@ class Attention(nn.Module):
             q = F.normalize(q, dim=-1)
             k = F.normalize(k, dim=-1)
 
+
         if rotary_pos_emb is not None and not has_context:
+            
             freqs, _ = rotary_pos_emb
 
             q_dtype = q.dtype
@@ -436,24 +438,24 @@ class Attention(nn.Module):
 
             q = q.to(q_dtype)
             k = k.to(k_dtype)
-        if rotary_pos_emb is not None and rotary_cond_emb is not None and has_context:
-            freqs_q, _ = rotary_pos_emb
-            freqs_k, _ = rotary_cond_emb
+        # if rotary_pos_emb is not None and rotary_cond_emb is not None and has_context:
+        #     freqs_q, _ = rotary_pos_emb
+        #     freqs_k, _ = rotary_cond_emb
 
-            q_dtype = q.dtype
-            k_dtype = k.dtype
+        #     q_dtype = q.dtype
+        #     k_dtype = k.dtype
 
-            q = q.to(torch.float32)
-            k = k.to(torch.float32)
-            freqs_q = freqs_q.to(torch.float32)
-            freqs_k = freqs_k.to(torch.float32)
+        #     q = q.to(torch.float32)
+        #     k = k.to(torch.float32)
+        #     freqs_q = freqs_q.to(torch.float32)
+        #     freqs_k = freqs_k.to(torch.float32)
 
-            q = apply_rotary_pos_emb(q, freqs_q)
-            k = apply_rotary_pos_emb(k, freqs_k)
+        #     q = apply_rotary_pos_emb(q, freqs_q)
+        #     k = apply_rotary_pos_emb(k, freqs_k)
 
-            q = q.to(q_dtype)
-            k = k.to(k_dtype)
-            pass
+        #     q = q.to(q_dtype)
+        #     k = k.to(k_dtype)
+        #     pass
         
         input_mask = context_mask 
 
@@ -503,6 +505,10 @@ class Attention(nn.Module):
             fa_dtype_in = q.dtype
             q, k, v = map(lambda t: rearrange(t, 'b h n d -> b n h d').to(torch.float16), (q, k, v))
             
+            # print(q.shape, k.shape, v.shape)
+            # out, softmax_lse, S_dmask = flash_attn_func(q, k, v, causal = causal, return_attn_probs = True)
+            # return out, softmax_lse, S_dmask
+
             out = flash_attn_func(q, k, v, causal = causal)
             
             out = rearrange(out.to(fa_dtype_in), 'b n h d -> b h n d')
@@ -826,6 +832,7 @@ class ContinuousTransformer(nn.Module):
         if self.use_sinusoidal_emb or self.use_abs_pos_emb:
             x = x + self.pos_emb(x)
             # kwargs['context'] = kwargs['context'] + self.pos_emb(kwargs['context'])
+            # print(kwargs['context'].shape)
             kwargs['context'] = kwargs['context'] + self.pos_emb_cond(kwargs['context'])
 
 

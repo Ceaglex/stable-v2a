@@ -25,15 +25,16 @@ def main():
     name = 'stablev2a_'
     train_test = 'test'
     cfg_scale = 5
-    param = 'model8_ss20_cfg5'
+    param = 'model8_ss60_noabs_cfg5'
     info_dirs = [f'./dataset/feature/{train_test}/{dataset}/10']
     output_dir = f"/home/chengxin/chengxin/{dataset}/generated_audios/{name}/{param}"
 
 
-    model_config_file = './stable_audio_tools/configs/model_config.json'
+    # model_config_file = './stable_audio_tools/configs/model_config.json'
     # model_config_file = './stable_audio_tools/configs/model_config_gc16000.json'
     # model_config_file = './stable_audio_tools/configs/model_config_vl30.json'
     # model_config_file = './stable_audio_tools/configs/model_config_ss30.json'
+    model_config_file = './stable_audio_tools/configs/model_config_vl30_noabs.json'
 
 
     with open(model_config_file) as f:
@@ -43,7 +44,7 @@ def main():
         variable_length = model_config['variable_length']
         fps = model_config['fps']
         force_channels = "stereo" if model_config["audio_channels"] == 2 else "mono"
-        sample_size = sample_rate*20
+        sample_size = sample_rate*60
         variable_length = None
     print(sample_size, sample_rate, sample_size/sample_rate, variable_length, fps, force_channels, cfg_scale)
 
@@ -53,7 +54,7 @@ def main():
     # model.load_state_dict(load_file('./weight/StableAudio/2024-08-01 09:36:20/epoch=29-step=2818.safetensors'), strict=True)  # SECOND BEST model_config.json
     # model.load_state_dict(load_file('./weight/StableAudio/2024-08-01 09:36:20/epoch=45-step=2818.safetensors'), strict=True)    # BEST model_config.json
     # model.load_state_dict(load_file('./weight/StableAudio/2024-08-04 02:52:24/epoch=36-step=2818.safetensors'), strict=True)    # BEST model_config.json
-    model.load_state_dict(load_file('./weight/StableAudio/2024-08-04 02:52:24/epoch=60-step=2818.safetensors'), strict=True)    # BEST model_config.json
+    model.load_state_dict(load_file('./weight/StableAudio/2024-08-04 02:52:24/epoch=60-step=2818.safetensors'), strict=False)    # BEST model_config.json
     # model.load_state_dict(load_file('./weight/StableAudio/2024-08-19 11:11:56/epoch=60-step=2818.safetensors'), strict=True)    # BEST model_config_gc16000.json
     # model.load_state_dict(load_file('./weight/StableAudio/2024-08-24 20:27:19/epoch=0-step=1409.safetensors'), strict=True)       # BEST model_config_vl30.json
     # model.load_state_dict(load_file('./weight/StableAudio/2024-09-07 00:11:02/epoch=0-step=101.safetensors'), strict=True)       # model_config_ss30.json

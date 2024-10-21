@@ -237,6 +237,9 @@ class CLIPFeatConditioner(Conditioner):
                             frames = []
 
                     image_features = torch.concat(image_features).to(device)
+                    # text_tokens = clip.tokenize(['Dark and silence' for _ in range(image_features.shape[0])]).to(device)
+                    # text_features  = clip_model.encode_text(text_tokens)
+                    # image_features = text_features
                     images_features.append(image_features)                    
 
                 max_length = max([image_features.shape[0] for image_features in images_features])
