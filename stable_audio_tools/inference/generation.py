@@ -27,6 +27,7 @@ def generate_diffusion_cond(
         init_noise_level: float = 1.0,
         mask_args: dict = None,
         return_latents = False,
+        # return_map = False,
         **sampler_kwargs
         ) -> torch.Tensor: 
     """
@@ -143,10 +144,13 @@ def generate_diffusion_cond(
     # k-diffusion denoising process go!
 
     diff_objective = model.diffusion_objective
+    timestep_attn_maps = None
 
     if diff_objective == "v":    
         # k-diffusion denoising process go!
-        sampled = sample_k(model.model, noise, init_audio, mask, steps, **sampler_kwargs, **conditioning_inputs, **negative_conditioning_tensors, cfg_scale=cfg_scale, batch_cfg=True, rescale_cfg=True, device=device)
+        sampled = sample_k(model.model, noise, init_audio, mask, steps,  **sampler_kwargs, **conditioning_inputs, **negative_conditioning_tensors, cfg_scale=cfg_scale, batch_cfg=True, rescale_cfg=True, device=device)
+        if type(sampled) == tuple:
+            sampled, timestep_attn_maps = sampled
     elif diff_objective == "rectified_flow":
 
         if "sigma_min" in sampler_kwargs:
@@ -171,6 +175,8 @@ def generate_diffusion_cond(
         sampled = model.pretransform.decode(sampled)
 
     # Return audio
+    if timestep_attn_maps != None:
+        return sampled, timestep_attn_maps
     return sampled
 
 

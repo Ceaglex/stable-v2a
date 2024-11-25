@@ -198,9 +198,9 @@ class VideoFeatDataset(torch.utils.data.Dataset):
                     
                 for pickle_path in pickle_paths:  #########
                     audio_name = os.path.basename(pickle_path).replace('.pickle', ext)
-
                     with open(pickle_path, 'rb') as file:
                         info = pickle.load(file)
+                        print(info)
                         for key, item in info.items():
                             if isinstance(info[key], torch.Tensor):
                                 info[key] = item.cpu().detach()
@@ -459,8 +459,6 @@ class VideoFeatDataset_VL(torch.utils.data.Dataset):
                 
 
                     
-
-
             return (audio, info_dict)
         
         except Exception as e:

@@ -25,10 +25,11 @@ class DiffusionTransformer(nn.Module):
         num_heads=8,
         transformer_type: tp.Literal["x-transformers", "continuous_transformer"] = "x-transformers",
         global_cond_type: tp.Literal["prepend", "adaLN"] = "prepend",
+        # return_map=False,
         **kwargs):
 
         super().__init__()
-        
+        # self.return_map = return_map
         
 
         # Timestep embeddings
@@ -119,6 +120,7 @@ class DiffusionTransformer(nn.Module):
                 cross_attend = cond_token_dim > 0,
                 cond_token_dim = cond_embed_dim,
                 global_cond_dim=global_dim,
+                # return_map=return_map,
                 **kwargs
             )
              
@@ -129,6 +131,8 @@ class DiffusionTransformer(nn.Module):
         nn.init.zeros_(self.preprocess_conv.weight)
         self.postprocess_conv = nn.Conv1d(io_channels, io_channels, 1, bias=False)
         nn.init.zeros_(self.postprocess_conv.weight)
+
+
 
     def _forward(
         self, 
@@ -142,6 +146,7 @@ class DiffusionTransformer(nn.Module):
         prepend_cond=None,
         prepend_cond_mask=None,
         return_info=False,
+        return_map=False,
         **kwargs):
 
         
@@ -218,9 +223,15 @@ class DiffusionTransformer(nn.Module):
             # context_mask, mask = None
             # prepend_mask :                                                  [batchsize, 1], True
             # print(x.shape, prepend_inputs.shape, global_embed.shape)
-            output = self.transformer(x, prepend_embeds=prepend_inputs, context=cross_attn_cond, context_mask=cross_attn_cond_mask, mask=mask, prepend_mask=prepend_mask, return_info=return_info, **extra_args, **kwargs)
+            output = self.transformer(x, prepend_embeds=prepend_inputs, context=cross_attn_cond, context_mask=cross_attn_cond_mask, mask=mask, prepend_mask=prepend_mask, 
+                                      return_info=return_info, return_map=return_map, **extra_args, **kwargs)
             if return_info:
                 output, info = output
+            if return_map:
+                output, attn_maps = output
+                # print(len(attn_maps))
+            
+
         elif self.transformer_type == "mm_transformer":
             output = self.transformer(x, context=cross_attn_cond, mask=mask, context_mask=cross_attn_cond_mask, **extra_args, **kwargs)
 
@@ -233,8 +244,11 @@ class DiffusionTransformer(nn.Module):
 
         if return_info:
             return output, info
-
+        if return_map:
+            return output, attn_maps
         return output
+
+
 
     def forward(
         self, 
@@ -255,9 +269,12 @@ class DiffusionTransformer(nn.Module):
         scale_phi=0.0,
         mask=None,
         return_info=False,
+        return_map=None,
         **kwargs):
 
         assert causal == False, "Causal mode is not supported for DiffusionTransformer"
+        return_map = False if return_map==None else return_map
+
 
         if cross_attn_cond_mask is not None:
             cross_attn_cond_mask = cross_attn_cond_mask.bool()
@@ -352,10 +369,13 @@ class DiffusionTransformer(nn.Module):
                 prepend_cond = batch_prepend_cond,
                 prepend_cond_mask = batch_prepend_cond_mask,
                 return_info = return_info,
+                return_map = return_map,
                 **kwargs)
 
             if return_info:
                 batch_output, info = batch_output
+            if return_map and type(batch_output) == tuple:
+                batch_output, attn_maps = batch_output
 
             cond_output, uncond_output = torch.chunk(batch_output, 2, dim=0)
             cfg_output = uncond_output + (cond_output - uncond_output) * cfg_scale
@@ -370,6 +390,8 @@ class DiffusionTransformer(nn.Module):
             
             if return_info:
                 return output, info
+            if return_map:
+                return output, attn_maps
 
             return output
             
@@ -385,5 +407,6 @@ class DiffusionTransformer(nn.Module):
                 prepend_cond_mask=prepend_cond_mask,
                 mask=mask,
                 return_info=return_info,
+                return_map=return_map,
                 **kwargs
             )

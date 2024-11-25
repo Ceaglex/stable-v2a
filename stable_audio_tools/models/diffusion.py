@@ -219,6 +219,7 @@ class DiTWrapper(ConditionedDiffusionModel):
             for param in self.model.parameters():
                 param *= 0.5
 
+
     def forward(self,
                 x,
                 t,

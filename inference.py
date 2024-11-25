@@ -19,15 +19,15 @@ def main():
     dataset = "VGGSound"
     name = 'stablev2a_'
     train_test = 'test'
-    cfg_scale = 5
+    cfg_scale = 3
     info_dirs = [f'./dataset/feature/{train_test}/{dataset}/10']
-    output_dir = f"/home/chengxin/chengxin/{dataset}/generated_audios/{name}/model8_noabs_cfg5"
+    output_dir = f"/home/chengxin/chengxin/{dataset}/generated_audios/{name}/model8_noabs_cfg3"
 
 
     # model_config_file = './stable_audio_tools/configs/model_config.json'
     # model_config_file = './stable_audio_tools/configs/model_config_gc.json'   
     # model_config_file = './stable_audio_tools/configs/model_config_gc16000.json'
-    model_config_file = './stable_audio_tools/configs/model_config_vl30_noabs.json'
+    model_config_file = './stable_audio_tools/configs/model_config_vl30.json'
 
     with open(model_config_file) as f:
         model_config = json.load(f)

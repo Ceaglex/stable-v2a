@@ -103,17 +103,17 @@ class DiffusionCondTrainingWrapper(pl.LightningModule):
 
         trainable_params = self.diffusion.parameters()
         
-        trainable_params = []
-        for name, param in self.diffusion.named_parameters():
-            if ('pos_emb' in name ) and param.requires_grad:  #
-                trainable_params.append(param)
-                print(name)
-            if ('layers' in name ) and param.requires_grad:  #
-                idx = name[name.find('layers'):]
-                idx = int(idx.split('.')[1])
-                if idx >= 23:
-                    trainable_params.append(param)
-                    print(name)
+        # trainable_params = []
+        # for name, param in self.diffusion.named_parameters():
+        #     if ('pos_emb' in name ) and param.requires_grad:  #
+        #         trainable_params.append(param)
+        #         print("train:", name)
+        #     if ('layers' in name ) and param.requires_grad:  #
+        #         idx = name[name.find('layers'):]
+        #         idx = int(idx.split('.')[1])
+        #         if idx >= 23:
+        #             trainable_params.append(param)
+        #             print("train:", name)
 
         
         opt_diff = create_optimizer_from_config(diffusion_opt_config['optimizer'], trainable_params)
@@ -181,6 +181,8 @@ class DiffusionCondTrainingWrapper(pl.LightningModule):
         extra_args = {}
         with torch.cuda.amp.autocast():
             output = self.diffusion(noised_inputs, t, cond=conditioning, cfg_dropout_prob = self.cfg_dropout_prob, **extra_args)
+            # print(type(output))
+            # print(output.shape)
             loss_info.update({
                 "output": output,
                 "targets": targets,

@@ -27,10 +27,8 @@ except ImportError:
 
 
 
-def scaled_dot_product_attention(query, key, value, 
-                                 attn_mask=None, dropout_p=0.0,
-                                 is_causal=False, scale=None, 
-                                 enable_gqa=False, return_map = False) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+def scaled_dot_product_attention(query, key, value, attn_mask=None, dropout_p=0.0,
+        is_causal=False, scale=None, enable_gqa=False, return_map = False) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
     L, S = query.size(-2), key.size(-2)
     scale_factor = 1 / math.sqrt(query.size(-1)) if scale is None else scale
     attn_bias = torch.zeros(L, S, dtype=query.dtype).to(query.device)
@@ -41,9 +39,8 @@ def scaled_dot_product_attention(query, key, value,
         attn_bias.to(query.dtype)
 
     if attn_mask is not None:
-        attn_mask.to(query.device)
         if attn_mask.dtype == torch.bool:
-            attn_bias.masked_fill_(attn_mask.logical_not().to(query.device), float("-inf"))
+            attn_bias.masked_fill_(attn_mask.logical_not(), float("-inf"))
         else:
             attn_bias += attn_mask
 
@@ -55,8 +52,6 @@ def scaled_dot_product_attention(query, key, value,
     attn_weight += attn_bias
     attn_weight = torch.softmax(attn_weight, dim=-1)
     attn_weight = torch.dropout(attn_weight, dropout_p, train=True)
-
-    # print(attn_mask.shape, attn_weight.shape)
     
 
     if return_map:
@@ -333,12 +328,13 @@ class Attention(nn.Module):
         zero_init_output=True,
         qk_norm = False,
         natten_kernel_size = None,
+        # return_map = False
     ):
         super().__init__()
         self.dim = dim
         self.dim_heads = dim_heads
         self.causal = causal
-        self.buffer_mask = dict()
+        # self.return_map = return_map
 
         dim_kv = dim_context if dim_context is not None else dim
         
@@ -372,32 +368,6 @@ class Attention(nn.Module):
             enable_math = True,
             enable_mem_efficient = True
         )
-
-
-    def create_diagonal_like_matrix(self, rows, cols, threshold):
-        # Create row and column indices
-        row_idx = torch.arange(rows, device=self.to_out.weight.device).unsqueeze(1)
-        col_idx = torch.arange(cols, device=self.to_out.weight.device).unsqueeze(0)
-        
-        row_pos = row_idx.float() / rows
-        col_pos = col_idx.float() / cols
-        matrix = torch.abs(row_pos - col_pos) <= threshold
-        
-        # Handle special cases for first row and column
-        matrix[0, :] = True  
-        # matrix[:, 0] = True
-        if rows == cols:
-            matrix[:, 0] = True  # First column if square matrix
-        
-        return matrix
-
-
-    def get_mask(self, q_len, k_len, threshold):
-        if self.buffer_mask.get((q_len, k_len)) is None:
-            mask = self.create_diagonal_like_matrix(q_len, k_len, threshold)
-            self.buffer_mask[(q_len, k_len)] = mask
-        return self.buffer_mask[(q_len, k_len)]
-
 
     def flash_attn(
             self,
@@ -452,20 +422,18 @@ class Attention(nn.Module):
             mask = mask & ~causal_mask
 
             # protect against an entire row being masked out
+
             row_is_entirely_masked = ~mask.any(dim = -1)
             mask[..., 0] = mask[..., 0] | row_is_entirely_masked
 
             causal = False
         
-
         with torch.backends.cuda.sdp_kernel(**self.sdp_kwargs):
             # out = F.scaled_dot_product_attention(
             #     q, k, v,
             #     attn_mask = mask,
             #     is_causal = causal
             # )
-
-            # mask = self.get_mask(q_len=q.size(-2), k_len=k.size(-2), threshold=0.1)
             out = scaled_dot_product_attention(
                 q, k, v,
                 attn_mask = mask,
@@ -490,7 +458,7 @@ class Attention(nn.Module):
         rotary_pos_emb = None,
         rotary_cond_emb = None,
         causal = None,
-        return_map = False,
+        return_map = False
     ):
         h, kv_h, has_context = self.num_heads, self.kv_heads, context is not None
         attn_map = None
@@ -614,10 +582,6 @@ class Attention(nn.Module):
 
         # Fall back to PyTorch implementation
         elif self.use_pt_flash:
-            # if retain != None:
-            #     k = k[:,:,retain-1:retain,:]
-            #     v = v[:,:,retain-1:retain,:]
-            #     print(retain, q.shape, k.shape,v.shape)
             out = self.flash_attn(q, k, v, causal = causal, mask = final_attn_mask, return_map=return_map)
             if return_map:
                 out, attn_map = out
@@ -720,6 +684,7 @@ class TransformerBlock(nn.Module):
             dim_context = None,
             global_cond_dim = None,
             causal = False,
+            # return_map = False,
             zero_init_branch_outputs = True,
             conformer = False,
             layer_ix = -1,
@@ -735,7 +700,7 @@ class TransformerBlock(nn.Module):
         self.cross_attend = cross_attend
         self.dim_context = dim_context
         self.causal = causal
-
+        # self.return_map = return_map
 
         self.pre_norm = LayerNorm(dim, **norm_kwargs) if not remove_norms else nn.Identity()
 
@@ -785,7 +750,7 @@ class TransformerBlock(nn.Module):
         context_mask = None,
         rotary_pos_emb = None,
         rotary_cond_emb = None,
-        return_map = False,
+        return_map = False
     ):
         attn_map = None
 
@@ -820,7 +785,7 @@ class TransformerBlock(nn.Module):
             out = self.self_attn(self.pre_norm(x), mask = mask, 
                                    rotary_pos_emb = rotary_pos_emb, 
                                    rotary_cond_emb = None,
-                                   return_map = None)
+                                   return_map = return_map)
             if return_map and type(out) == tuple:
                 out, attn_map = out
             x = x + out
@@ -830,7 +795,7 @@ class TransformerBlock(nn.Module):
                 out = self.cross_attn(self.cross_attend_norm(x), context = context, context_mask = context_mask,
                                         rotary_pos_emb = rotary_pos_emb, 
                                         rotary_cond_emb = rotary_cond_emb, 
-                                        return_map = return_map)
+                                        return_map = False)
                 if return_map and type(out) == tuple:
                     out, attn_map = out
                 x = x + out
@@ -859,6 +824,7 @@ class ContinuousTransformer(nn.Module):
         cond_token_dim=None,
         global_cond_dim=None,
         causal=False,
+        # return_map = True,
         rotary_pos_emb=True,
         rotary_cond_emb=False,
         zero_init_branch_outputs=True,
@@ -876,6 +842,7 @@ class ContinuousTransformer(nn.Module):
         self.dim = dim
         self.depth = depth
         self.causal = causal
+        # self.return_map = return_map
         self.layers = nn.ModuleList([])
 
         self.project_in = nn.Linear(dim_in, dim, bias=False) if dim_in is not None else nn.Identity()
@@ -913,6 +880,7 @@ class ContinuousTransformer(nn.Module):
                     dim_context = cond_token_dim,
                     global_cond_dim = global_cond_dim,
                     causal = causal,
+                    # return_map = return_map,
                     zero_init_branch_outputs = zero_init_branch_outputs,
                     conformer=conformer,
                     layer_ix=i,
@@ -973,14 +941,10 @@ class ContinuousTransformer(nn.Module):
             kwargs['context'] = kwargs['context'] + self.pos_emb_cond(kwargs['context'])
 
 
-
         # Iterate over the transformer layers
-        for i in range(len(self.layers)):
-            layer = self.layers[i]
-
-
-                
-            x = layer(x, return_map=return_map, rotary_pos_emb = rotary_pos_emb, rotary_cond_emb = rotary_cond_emb, global_cond=global_cond,**kwargs)
+        for layer in self.layers:
+            # global_cond = None
+            x = layer(x, return_map=return_map, rotary_pos_emb = rotary_pos_emb, rotary_cond_emb = rotary_cond_emb, global_cond=global_cond, **kwargs)
             if type(x) == tuple:
                 x, attn_map = x
                 attn_maps.append(attn_map)            
